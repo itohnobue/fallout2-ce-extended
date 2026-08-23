@@ -621,6 +621,7 @@ int pipboyMessageListInit()
     if (!(messageListLoad(&gPipboyMessageList, path))) {
         return -1;
     }
+    messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_PIPBOY, &gPipboyMessageList);
 
     return 0;
 }
@@ -628,6 +629,7 @@ int pipboyMessageListInit()
 void pipboyMessageListFree()
 {
     if (gPipboyMessageList.entries != nullptr) {
+        messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_PIPBOY, nullptr);
         messageListFree(&gPipboyMessageList);
     }
     messageListInit(&gPipboyMessageList);
@@ -2875,6 +2877,7 @@ static int questInit()
 
     File* stream = fileOpen("data\\quests.txt", "rt");
     if (stream == nullptr) {
+        messageListFree(&gQuestsMessageList);
         return -1;
     }
 
@@ -2942,12 +2945,14 @@ static int questInit()
     qsort(gQuestDescriptions, gQuestsCount, sizeof(*gQuestDescriptions), questDescriptionCompare);
 
     fileClose(stream);
+    messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_QUESTS, &gQuestsMessageList);
 
     return 0;
 
 err:
 
     fileClose(stream);
+    messageListFree(&gQuestsMessageList);
 
     return -1;
 }
@@ -2962,6 +2967,7 @@ static void questFree()
 
     gQuestsCount = 0;
 
+    messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_QUESTS, nullptr);
     messageListFree(&gQuestsMessageList);
 }
 

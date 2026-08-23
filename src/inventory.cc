@@ -1606,6 +1606,7 @@ static int inventoryMessageListInit()
     if (!messageListLoad(&gInventoryMessageList, path))
         return -1;
 
+    messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_INVENTORY, &gInventoryMessageList);
     return 0;
 }
 
@@ -1622,6 +1623,7 @@ static void inventoryDisplayMessage(int num)
 // 0x46E7A0
 static int inventoryMessageListFree()
 {
+    messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_INVENTORY, nullptr);
     messageListFree(&gInventoryMessageList);
     return 0;
 }
@@ -2711,7 +2713,7 @@ static int inventoryCommonInit()
             gameUiDisable(0);
         }
 
-        messageListFree(&gInventoryMessageList);
+        inventoryMessageListFree();
 
         return -1;
     }
