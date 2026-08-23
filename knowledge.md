@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-23T16:16:40.589120
+Last updated: 2026-08-23T20:52:46.777166
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -737,4 +737,25 @@ Tags: upstream, sync
 Changed: 2026-08-23T16:16:40.586689
 
 Upstream sync pass 3 (2026-08-23): 47 upstream commits since 1cce144 analyzed. Before cherry-picking ANY upstream commit into this fork, run 'git rev-list --cherry-pick --right-only main...upstream/main' (patch-id-aware) + grep the tree for marker symbols — several commits (FPS counter #689, mod_skill_points_per_level #695, perk-carryover #367) were ALREADY integrated in adapted form. Rejected: 6f05d3d8 sound-list dynamic (#577) — et tu ships a tagged SNDLIST.LST (mods/fo1_base/sound/sfx/SNDLIST.LST) and upstream's directory-scan-only change would reorder FO1 sound tags; 436d5554 encounter-intros removal — fork has a working implementation; 68479c44 perk carryover — fork's gSfallPerkOwed + sfall_gl_vars persistence replaces upstream's per-level vector + ce.sav sidecar (functionally equivalent, deliberately different architecture). Integrated 13 commits adapted (enum-based Map*/Rotation* upstream APIs adapted to fork's int-based worldmap).
+
+## [got-20260823205234-bc713f]
+Category: gotcha
+Tags: elevation, caravan, combat, fo1ce
+Changed: 2026-08-23T20:52:34.477690
+
+Elevation-coherence invariant (FO1-CE contract, verified against alexbatalov/fallout1-ce): the dude may NEVER sit on a different elevation than the map/combat elevation. FO1-CE: override_map_start never touches map elevation; combat list is per-elevation (objectListCreate(-1,gElevation,CRITTER)); worldmap→encounter lands at enteringElevation=0. The et tu caravan self-attack bug = the FO1-in-2 caravan flow + a stray same-map/cross-map transition displacing the party to elev 1 while the encounter scripts commit elev 0. Engine-side repair committed bb7fa09b: _combat_enroll_csd_combatant (CSD att/def force-enrolled into the combat list); _combat_turn CSD attack gated on _gcsd->attacker==gDude; opOverrideMapStart now commits mapSetElevation + records the committed start; mapHandleTransition one-shot map-entry window (same-map suppression + settle, elevation-only); _combat re-asserts elevation BEFORE the list build.
+
+## [got-20260823205240-eead0a]
+Category: gotcha
+Tags: window, lifecycle, combat, elevation, fix-design
+Changed: 2026-08-23T20:52:40.447878
+
+One-shot window vs long-lived record (design lesson from the caravan fix 3-cycle convergence): protections scoped to 'the map-entry moment' MUST be gated by a one-shot WINDOW flag (set at the trigger, consumed on the first consuming pass), NOT by a long-lived record cleared at some distant point (next map load). We shipped the long-lived version twice: (1) F-01 — _combat re-assert + settle restored the tile+elevation whenever the record was valid → a FO2/RPU player walking away then fighting would teleport back to spawn (tile over-reach); (2) N-01 — settle ran after the map==0 early-return so it never fired when no transition was pending. Correct final design: window flag for gating (suppression/settle/re-assert all peek/consume the same one-shot), long-lived record only for the stored values; elevation-only re-assert (tile ownership belongs to the player).
+
+## [dis-20260823205246-796309]
+Category: discovery
+Tags: lineage, fo1ce, fallout1, reference
+Changed: 2026-08-23T20:52:46.774433
+
+Repo lineage + canonical reference (verified via web + source fetches): alexbatalov/fallout2-re (decompile) -> alexbatalov/fallout2-ce (ORIGINAL CE) -> fallout2-ce/fallout2-ce org = this repo's  remote; alexbatalov/fallout1-ce (NOT 'alexbatalov/fallout-ce' — that name does not exist) is the separate vanilla-FO1 CE. The attack-combat flaw class (ungated _combat_attack_this(_gcsd->defender)) is IDENTICAL in the original FO2-CE and FO1-CE — it is original-batalov code, not a fork regression. When fixing FO1-in-2 problems on this fork, consult FO1-CE first for the canonical FO1 semantics (op_attack intextra.cc:1466, combat_attack_this combat.cc:2269, override_map_start intextra.cc:273, elevation filter object.cc:2419/2431).
 
