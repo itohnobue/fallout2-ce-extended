@@ -1513,6 +1513,18 @@ static void op_get_attack_type(Program* program)
 static bool sfallVfsPathContainsTraversal(const char* path);
 static bool sfallVfsResolvePath(const char* rawPath, char* outBuf, size_t outBufSize);
 
+static void op_force_aimed_shots(Program* program)
+{
+    int pid = programStackPopInteger(program);
+    forceAimedShots(pid);
+}
+
+static void op_disable_aimed_shots(Program* program)
+{
+    int pid = programStackPopInteger(program);
+    disableAimedShots(pid);
+}
+
 static void op_play_sfall_sound(Program* program)
 {
     int mode = programStackPopInteger(program);
@@ -9060,6 +9072,7 @@ void sfallOpcodesInit()
 
     // 0x823e - void force_aimed_shots(int pid)
     interpreterRegisterOpcode(0x823E, op_force_aimed_shots);
+
     // 0x823f - void disable_aimed_shots(int pid)
     interpreterRegisterOpcode(0x823F, op_disable_aimed_shots);
 

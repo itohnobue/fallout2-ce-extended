@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <unordered_set>
 #include <vector>
 
 #include "animation.h"
@@ -193,6 +194,13 @@ static int gExplosionRadius;
 static DamageType gExplosionDamageType;
 static int gExplosionMaxTargets;
 static int gHealingItemPids[HEALING_ITEM_COUNT];
+static std::unordered_set<int> forcedAimedShotPids;
+static std::unordered_set<int> disabledAimedShotPids;
+
+static int normalizeAimedShotPid(int pid)
+{
+    return pid == -1 ? 0 : pid;
+}
 
 // 0x4770E0
 int itemsInit()
@@ -222,6 +230,7 @@ int itemsInit()
 void itemsReset()
 {
     // SFALL
+    aimedShotOverridesReset();
     explosionsReset();
 }
 
@@ -2077,20 +2086,49 @@ bool critterCanAim(Object* critter, HitMode hitMode)
         }
     }
 
+    Object* weapon = critterGetWeaponForHitMode(critter, hitMode);
+    int pid = normalizeAimedShotPid(weapon != nullptr ? weapon->pid : 0);
+    if (disabledAimedShotPids.find(pid) != disabledAimedShotPids.end()) {
+        return false;
+    }
+
     // NOTE: Uninline.
     AnimationType anim = critterGetAnimationForHitMode(critter, hitMode);
     if (anim == ANIM_FIRE_BURST || anim == ANIM_FIRE_CONTINUOUS) {
         return false;
     }
 
+    if (forcedAimedShotPids.find(pid) != forcedAimedShotPids.end()) {
+        return true;
+    }
+
     // NOTE: Uninline.
-    Object* weapon = critterGetWeaponForHitMode(critter, hitMode);
     DamageType damageType = weaponGetDamageType(critter, weapon);
 
     return damageType != DAMAGE_TYPE_EXPLOSION
         && damageType != DAMAGE_TYPE_FIRE
         && damageType != DAMAGE_TYPE_EMP
         && (damageType != DAMAGE_TYPE_PLASMA || anim != ANIM_THROW_ANIM);
+}
+
+void aimedShotOverridesReset()
+{
+    forcedAimedShotPids.clear();
+    disabledAimedShotPids.clear();
+}
+
+void forceAimedShots(int pid)
+{
+    pid = normalizeAimedShotPid(pid);
+    disabledAimedShotPids.erase(pid);
+    forcedAimedShotPids.insert(pid);
+}
+
+void disableAimedShots(int pid)
+{
+    pid = normalizeAimedShotPid(pid);
+    forcedAimedShotPids.erase(pid);
+    disabledAimedShotPids.insert(pid);
 }
 
 // 0x478EF4
