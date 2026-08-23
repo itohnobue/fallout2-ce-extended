@@ -494,6 +494,12 @@ int skillGetValue(Object* critter, Skill skill)
         return -5;
     }
 
+    // fission 37201ec: guard skill lookups for non-critter/null objects
+    // BEFORE dereferencing (skillGetBaseValue reads obj->pid).
+    if (critter == nullptr || objectTypeFromPid(critter->pid) != OBJ_TYPE_CRITTER) {
+        return 0;
+    }
+
     // aa439ef guard: protoGetProto failure (invalid/null pid) surfaces as
     // -5 from skillGetBaseValue. Distinguish it from a legitimately negative
     // raw point value (handled by the penalty path below).
