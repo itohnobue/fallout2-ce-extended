@@ -94,6 +94,18 @@ int mapSetLocalVar(int var, ProgramValue& value);
 int mapGetLocalVar(int var, ProgramValue& value);
 int mapAllocLocalVars(int numNewVars);
 void mapSetStart(int tile, int elevation, Rotation rotation);
+// Caravan-FIX: map script committed an override_map_start position for the
+// current map load (consumed by mapHandleTransition's first pass; re-asserted
+// by _combat before the combat list build).
+struct MapScriptStartOverride {
+    int tile;
+    int elevation;
+    Rotation rotation;
+    bool valid;
+};
+void mapScriptOverrideStartCommitted(int tile, int elevation, Rotation rotation);
+MapScriptStartOverride mapScriptOverrideStartGet();
+bool mapScriptOverrideWindowPending();
 char* mapGetName(int map_num, int elev);
 bool mapAreSameArea(int map_num1, int map_num2);
 int _get_map_idx_same(int map_num1, int map_num2);

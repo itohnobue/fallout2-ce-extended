@@ -1438,6 +1438,17 @@ int scriptsRequestCombat(CombatStartData* combat)
 
     if (combat) {
         memcpy(&gScriptsRequestedCSD, combat, sizeof(gScriptsRequestedCSD));
+        // DBGTRACE (caravan self-attack): snapshot the CSD as it is queued.
+        debugPrint("[DBGTRACE] scriptsRequestCombat: attacker=%s(pid=%#x) defender=%s(pid=%#x) override=%d\n",
+            combat->attacker != nullptr
+                ? (combat->attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(combat->attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(combat->attacker) : "non-critter"))
+                : "(null)",
+            combat->attacker != nullptr ? combat->attacker->pid : 0,
+            combat->defender != nullptr
+                ? (combat->defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(combat->defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(combat->defender) : "non-critter"))
+                : "(null)",
+            combat->defender != nullptr ? combat->defender->pid : 0,
+            (int)combat->overrideAttackResults);
     } else {
         gScriptsRequests |= SCRIPT_REQUEST_0x40;
     }

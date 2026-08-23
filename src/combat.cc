@@ -132,6 +132,7 @@ static bool _combat_add_noncoms();
 static int _compare_faster(const void* critter1Ptr, const void* critter2Ptr);
 static void _combat_sequence_init(Object* attacker, Object* defender);
 static void _combat_sequence();
+static void _combat_enroll_csd_combatant(Object* critter);
 static void combatAttemptEnd();
 static int _combat_input();
 static void _combat_set_move_all();
@@ -2696,6 +2697,21 @@ static void _combat_begin(Object* attacker)
         _list_total = objectListCreate(-1, _combat_elev, OBJ_TYPE_CRITTER, &_combat_list);
         _list_noncom = _list_total;
         _list_com = 0;
+
+        // DBGTRACE (caravan self-attack): who made it into the combat list.
+        debugPrint("[DBGTRACE] _combat_begin: list_total=%d elev=%d\n", _list_total, (int)_combat_elev);
+        for (int critterIndex = 0; critterIndex < _list_total; critterIndex++) {
+            Object* listed = _combat_list[critterIndex];
+            debugPrint("[DBGTRACE] _combat_begin: [%d] %s pid=%#x tile=%d elev=%d flags=%#x\n",
+                critterIndex,
+                listed != nullptr
+                    ? (listed->pid == gDude->pid ? "dude" : (objectTypeFromPid(listed->pid) == OBJ_TYPE_CRITTER ? critterGetName(listed) : "non-critter"))
+                    : "(null)",
+                listed != nullptr ? listed->pid : 0,
+                listed != nullptr ? listed->tile : -1,
+                listed != nullptr ? (int)listed->elevation : -1,
+                listed != nullptr ? (int)listed->flags : 0);
+        }
         _aiInfoList = (CombatAiInfo*)internal_malloc(sizeof(*_aiInfoList) * _list_total);
         if (_aiInfoList == nullptr) {
             return;
@@ -3075,6 +3091,34 @@ static void _combat_sequence_init(Object* attacker, Object* defender)
         }
     }
 
+    // DBGTRACE (caravan self-attack): combat list order after the swap.
+    // [0] is the first combatant's turn — a missing attacker here means the
+    // swap never matched and whoever sits at [0] attacks first.
+    int attackerInList = -1;
+    if (attacker != nullptr) {
+        for (int i = 0; i < _list_total; i++) {
+            if (_combat_list[i] == attacker) {
+                attackerInList = i;
+                break;
+            }
+        }
+    }
+    auto listName = [](int index) -> const char* {
+        if (index < 0 || index >= _list_total || _combat_list[index] == nullptr) {
+            return "(none)";
+        }
+        Object* obj = _combat_list[index];
+        if (obj->pid == gDude->pid) {
+            return "dude";
+        }
+        return objectTypeFromPid(obj->pid) == OBJ_TYPE_CRITTER ? critterGetName(obj) : "non-critter";
+    };
+    debugPrint("[DBGTRACE] _combat_sequence_init: attacker=%s in-list=%d list0=%s list1=%s list2=%s list_total=%d\n",
+        attacker != nullptr
+            ? (attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(attacker) : "non-critter"))
+            : "(null)",
+        attackerInList, listName(0), listName(1), listName(2), _list_total);
+
     // Place defender second.
     if (defender != nullptr) {
         for (int index = 0; index < _list_total; index++) {
@@ -3366,8 +3410,26 @@ static int _combat_turn(Object* obj, bool reloadedDuringCombat)
                 gameUiEnable();
                 _gmouse_3d_refresh();
 
-                if (_gcsd != nullptr) {
+                // DBGTRACE+CARAVAN-FIX: only force the player's attack when
+                // the script-started combat's *attacker* is the player.
+                // Previously the CSD's defender was forced-attacked by the
+                // player on ANY CSD combat (e.g. the et tu caravan encounter:
+                // the Raider's attack() request carrying attacker=Raider but
+                // the Raider not being in the combat list -> the dude's turn
+                // auto-attacked `_gcsd->defender` — i.e. the player attacked
+                // himself, producing the "dude -> dude" trace and the broken
+                // encounter flow).
+                if (_gcsd != nullptr && _gcsd->attacker == gDude) {
+                    debugPrint("[DBGTRACE] _combat_turn: CSD force-attack (attacker==dude) -> defender=%s\n",
+                        _gcsd->defender != nullptr
+                            ? (_gcsd->defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(_gcsd->defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(_gcsd->defender) : "non-critter"))
+                            : "(null)");
                     _combat_attack_this(_gcsd->defender);
+                } else if (_gcsd != nullptr) {
+                    debugPrint("[DBGTRACE] _combat_turn: CSD active but attacker!=dude — skipping forced attack (attacker=%s)\n",
+                        _gcsd->attacker != nullptr
+                            ? (_gcsd->attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(_gcsd->attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(_gcsd->attacker) : "non-critter"))
+                            : "(null)");
                 }
 
                 if (!reloadedDuringCombat) {
@@ -3539,6 +3601,41 @@ void _combat(CombatStartData* csd)
 {
     ScopedGameMode gm(GameMode::kCombat);
 
+    // DBGTRACE (caravan self-attack): CSD as received by the combat engine.
+    debugPrint("[DBGTRACE] _combat: csd=%s attacker=%s(pid=%#x) defender=%s(pid=%#x) override=%d\n",
+        csd != nullptr ? "ptr" : "null",
+        csd != nullptr && csd->attacker != nullptr
+            ? (csd->attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(csd->attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(csd->attacker) : "non-critter"))
+            : "(null)",
+        csd != nullptr && csd->attacker != nullptr ? csd->attacker->pid : 0,
+        csd != nullptr && csd->defender != nullptr
+            ? (csd->defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(csd->defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(csd->defender) : "non-critter"))
+            : "(null)",
+        csd != nullptr && csd->defender != nullptr ? csd->defender->pid : 0,
+        csd != nullptr ? (int)csd->overrideAttackResults : 0);
+
+    // Caravan-FIX (elevation coherence, FO1-CE contract) — BEFORE the combat
+    // list build: if the map script committed an override_map_start during this
+    // load's map-entry window (one-shot, NOT the whole map session) and the
+    // dude was displaced off the committed ELEVATION (the split root), restore
+    // the elevation so the per-elevation list build sees the dude, critters,
+    // gElevation and render all on one plane. The committed TILE is deliberately
+    // NOT re-asserted — the dude may legitimately have walked elsewhere since
+    // entry (FO2/RPU town maps: walking away then fighting must not teleport
+    // the player back to spawn). Gated on the one-shot window so a legitimate
+    // later elevator/stairs elevation change is never undone.
+    if (mapScriptOverrideWindowPending()) {
+        MapScriptStartOverride scriptOverride = mapScriptOverrideStartGet();
+        if (scriptOverride.valid && gDude->elevation != scriptOverride.elevation) {
+            debugPrint("[DBGTRACE] _combat: re-asserting map-script elevation (dude elev=%d -> script elev=%d at tile=%d)\n",
+                (int)gDude->elevation, scriptOverride.elevation, gDude->tile);
+            objectSetLocation(gDude, gDude->tile, scriptOverride.elevation, nullptr);
+            mapSetElevation(scriptOverride.elevation);
+            _partyMemberSyncPosition();
+            tileWindowRefresh();
+        }
+    }
+
     // SFALL: block_combat (0x824A) — abort combat if blocked.
     if (gBlockCombat != 0) {
         return;
@@ -3577,6 +3674,15 @@ void _combat(CombatStartData* csd)
                 defender = nullptr;
                 attacker = nullptr;
             }
+
+            // Caravan-FIX: the script attack's attacker/defender must be
+            // combatants even when the elevation-scoped list build did not
+            // see them (et tu caravan encounter: party on elev 1, caravan on
+            // elev 0). Without this the first-turn swap no-ops and the wrong
+            // critter takes the turn.
+            _combat_enroll_csd_combatant(attacker);
+            _combat_enroll_csd_combatant(defender);
+
             _combat_sequence_init(attacker, defender);
             _gcsd = csd;
             curIndex = 0;
@@ -3661,6 +3767,71 @@ void _combat(CombatStartData* csd)
     }
 }
 
+// Caravan-FIX: ensure a script-started combat's attacker/defender are in the
+// combat list even when the elevation-based list build (objectListCreate on
+// _combat_elev) did not see them (et tu caravan encounter: the party lands on
+// elevation 1 while the encounter script's creatures are on elevation 0).
+// Without this, _combat_sequence_init's swap silently no-ops, the wrong
+// critter takes the first turn, and script-attack combat breaks.
+static void _combat_enroll_csd_combatant(Object* critter)
+{
+    if (critter == nullptr) {
+        return;
+    }
+
+    if (objectTypeFromPid(critter->pid) != OBJ_TYPE_CRITTER) {
+        return;
+    }
+
+    if ((critter->data.critter.combat.results & DAM_DEAD) != DAM_NONE) {
+        return;
+    }
+
+    // Already in the list?
+    for (int index = 0; index < _list_total; index++) {
+        if (_combat_list[index] == critter) {
+            return;
+        }
+    }
+
+    Object** newList = (Object**)internal_realloc(_combat_list, sizeof(*_combat_list) * (_list_total + 1));
+    if (newList == nullptr) {
+        return;
+    }
+    _combat_list = newList;
+
+    CombatAiInfo* newAiInfoList = (CombatAiInfo*)internal_realloc(_aiInfoList, sizeof(*_aiInfoList) * (_list_total + 1));
+    if (newAiInfoList == nullptr) {
+        return;
+    }
+    _aiInfoList = newAiInfoList;
+
+    int newIndex = _list_total;
+    _list_total += 1;
+    _list_noncom += 1;
+
+    _combat_list[newIndex] = critter;
+
+    // Mirror the per-critter init done in _combat_begin for the original list.
+    CritterCombatData* combatData = &(critter->data.critter.combat);
+    combatData->maneuver &= CRITTER_MANEUVER_ENGAGING;
+    combatData->damageLastTurn = 0;
+    combatData->whoHitMe = nullptr;
+    combatData->ap = 0;
+    critter->cid = newIndex;
+
+    scriptSetObjects(critter->sid, nullptr, nullptr);
+    scriptSetFixedParam(critter->sid, 0);
+
+    // Re-init the AI info table (idempotent for a fresh combat; covers the
+    // appended index).
+    _combatInitAIInfoList();
+
+    debugPrint("[DBGTRACE] _combat_enroll_csd_combatant: enrolled %s pid=%#x tile=%d elev=%d index=%d\n",
+        critter->pid == gDude->pid ? "dude" : (objectTypeFromPid(critter->pid) == OBJ_TYPE_CRITTER ? critterGetName(critter) : "non-critter"),
+        critter->pid, critter->tile, (int)critter->elevation, newIndex);
+}
+
 // 0x422EC4
 void attackInit(Attack* attack, Object* attacker, Object* defender, HitMode hitMode, HitLocation hitLocation)
 {
@@ -3685,6 +3856,19 @@ void attackInit(Attack* attack, Object* attacker, Object* defender, HitMode hitM
 // 0x422F3C
 int _combat_attack(Object* attacker, Object* defender, HitMode hitMode, HitLocation hitLocation)
 {
+    // DBGTRACE (caravan self-attack): identify the caller of _combat_attack.
+    debugPrint("[DBGTRACE] _combat_attack: caller=%s attacker=%s(pid=%#x) defender=%s(pid=%#x) turn_running=%d\n",
+        __func__,
+        attacker != nullptr
+            ? (attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(attacker) : "non-critter"))
+            : "(null)",
+        attacker != nullptr ? attacker->pid : 0,
+        defender != nullptr
+            ? (defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(defender) : "non-critter"))
+            : "(null)",
+        defender != nullptr ? defender->pid : 0,
+        _combat_turn_running);
+
     // SFALL: Fix I2-H002 — gBlockCombat check to prevent AI attacks
     // when combat is blocked. _combat_attack_this (player path) and
     // _combat already check gBlockCombat, but _ai_attack → _combat_attack

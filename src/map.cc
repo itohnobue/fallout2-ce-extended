@@ -156,6 +156,40 @@ static TileData _square_data[ELEVATION_COUNT];
 static MapTransition gMapTransition;
 static bool disableSpecialMapIds;
 
+// Caravan-FIX (elevation coherence): the start position committed by a map
+// script's override_map_start during the current map load. Survives until the
+// next map load (re-asserted by _combat; consumed for suppression by the
+// mapHandleTransition one-shot window below). Struct defined in map.h.
+static MapScriptStartOverride gMapScriptOverrideStart = { -1, -1, ROTATION_NE, false };
+
+// One-shot: true only between the override commit and the first
+// mapHandleTransition pass — the window during which the engine's own
+// post-load transition relocation must not fight the script position.
+static bool gMapScriptOverrideWindowPending = false;
+
+void mapScriptOverrideStartCommitted(int tile, int elevation, Rotation rotation)
+{
+    debugPrint("[DBGTRACE] mapScriptOverrideStartCommitted: tile=%d elev=%d rot=%d\n", tile, elevation, (int)rotation);
+    gMapScriptOverrideStart.tile = tile;
+    gMapScriptOverrideStart.elevation = elevation;
+    gMapScriptOverrideStart.rotation = rotation;
+    gMapScriptOverrideStart.valid = true;
+    gMapScriptOverrideWindowPending = true;
+}
+
+MapScriptStartOverride mapScriptOverrideStartGet()
+{
+    return gMapScriptOverrideStart;
+}
+
+// One-shot window peek (for the settle/_combat re-assert): true only between
+// the override commit and the first mapHandleTransition pass. Legitimate later
+// same-map elevation changes (elevators/stairs) must NOT be affected.
+bool mapScriptOverrideWindowPending()
+{
+    return gMapScriptOverrideWindowPending;
+}
+
 // 0x631D38 map_display_rect
 static Rect gIsoWindowRect;
 
@@ -802,6 +836,8 @@ const char* mapBuildSavePath(const char* name)
 // 0x482924
 int mapSetEnteringLocation(int elevation, int tile_num, Rotation rotation)
 {
+    // DBGTRACE (caravan self-attack): who sets the map-enter location.
+    debugPrint("[DBGTRACE] mapSetEnteringLocation: elev=%d tile=%d rot=%d\n", elevation, tile_num, (int)rotation);
     gEnteringElevation = elevation;
     gEnteringTile = tile_num;
     gEnteringRotation = rotation;
@@ -931,6 +967,10 @@ int mapLoadById(int map)
 // 0x482B74 map_load_file
 static int mapLoad(File* stream)
 {
+    // Caravan-FIX: reset the override-map-start record + window for this load.
+    gMapScriptOverrideStart.valid = false;
+    gMapScriptOverrideWindowPending = false;
+
     int mapLoadSoundId = 0;
     if (!settings.system.executableIsMapper()) {
         _map_save_in_game(true);
@@ -1084,6 +1124,7 @@ static int mapLoad(File* stream)
     // misplaced the PC at map load.
     objectSetLocation(gDude, gEnteringTile, gElevation, nullptr);
     objectSetRotation(gDude, gEnteringRotation, nullptr);
+    debugPrint("[DBGTRACE] mapLoad: PC placement enteringTile=%d gElevation=%d\n", gEnteringTile, (int)gElevation);
     gMapHeader.index = wmMapMatchNameToIdx(gMapHeader.name);
 
     if ((gMapHeader.flags & MAP_HEADER_SAVED) == MAP_HEADER_NONE) {
@@ -1177,9 +1218,12 @@ err:
     if (scriptsExecStartProc() == -1) {
         debugPrint("\n   Error: scr_load_all_scripts failed!");
     }
+    debugPrint("[DBGTRACE] mapLoad: after StartProc dude tile=%d elev=%d gElevation=%d\n", gDude->tile, (int)gDude->elevation, (int)gElevation);
 
     scriptsExecMapEnterProc();
+    debugPrint("[DBGTRACE] mapLoad: after MapEnterProc dude tile=%d elev=%d gElevation=%d\n", gDude->tile, (int)gDude->elevation, (int)gElevation);
     scriptsExecMapUpdateProc();
+    debugPrint("[DBGTRACE] mapLoad: after MapUpdateProc dude tile=%d elev=%d gElevation=%d\n", gDude->tile, (int)gDude->elevation, (int)gElevation);
     tileEnable();
 
     if (gMapTransition.map > 0) {
@@ -1417,6 +1461,10 @@ int mapSetTransition(MapTransition* transition)
         return -1;
     }
 
+    // DBGTRACE (caravan relocation hunt): log every transition set.
+    debugPrint("[DBGTRACE] mapSetTransition: map=%d tile=%d elev=%d rot=%d\n",
+        transition->map, transition->tile, (int)transition->elevation, (int)transition->rotation);
+
     memcpy(&gMapTransition, transition, sizeof(gMapTransition));
 
     if (gMapTransition.map == 0) {
@@ -1433,6 +1481,40 @@ int mapSetTransition(MapTransition* transition)
 // 0x4835F8
 int mapHandleTransition()
 {
+    // Caravan-FIX (elevation coherence): consume the one-shot window on the
+    // FIRST mapHandleTransition pass after the load and, if a transition is
+    // pending, do not let its relocation fight the map script's committed
+    // override_map_start position (the FO1-CE contract: the dude stays at the
+    // map/combat elevation; e.g. et tu caravan encounter — a stray same-map
+    // transition attempted to move the party to (24486, elevation 1) while the
+    // encounter scripts placed everything on 0). The _combat re-assert uses the
+    // SAME one-shot window (mapScriptOverrideWindowPending peek) — everything is
+    // window-gated; the long-lived record is only the stored values.
+    MapScriptStartOverride scriptOverride = gMapScriptOverrideStart;
+    bool scriptOverrideActive = gMapScriptOverrideWindowPending;
+    gMapScriptOverrideWindowPending = false;
+
+    // Caravan-FIX: settle — runs BEFORE the transition early-return so it is a
+    // true second net even when no transition is pending at this pass: if the
+    // map script committed an override start this load and the dude was
+    // displaced off the committed ELEVATION, restore the elevation and refresh
+    // immediately so no broken frames are shown before the encounter combat
+    // begins (the _combat re-assert is the primary net; this one closes the
+    // visual glitch window). TILE is not touched. Gated on the one-shot window
+    // so a later legitimate elevator/stairs change is never undone.
+    if (scriptOverrideActive) {
+        if (scriptOverride.valid
+            && gDude->elevation != scriptOverride.elevation) {
+            debugPrint("[DBGTRACE] mapHandleTransition: settle restore elevation (dude elev=%d -> script elev=%d)\n",
+                (int)gDude->elevation, scriptOverride.elevation);
+            objectSetLocation(gDude, gDude->tile, scriptOverride.elevation, nullptr);
+            mapSetElevation(scriptOverride.elevation);
+            _partyMemberSyncPosition();
+            tileWindowRefresh();
+            renderPresent();
+        }
+    }
+
     if (gMapTransition.map == 0) {
         return 0;
     }
@@ -1470,9 +1552,20 @@ int mapHandleTransition()
                 && (disableSpecialMapIds
                     || (gMapHeader.index != MAP_MODOC_BEDNBREAKFAST && gMapHeader.index != MAP_THE_SQUAT_A))
                 && elevationIsValid(gMapTransition.elevation)) {
-                objectSetLocation(gDude, gMapTransition.tile, gMapTransition.elevation, nullptr);
-                mapSetElevation(gMapTransition.elevation);
-                objectSetRotation(gDude, gMapTransition.rotation, nullptr);
+                // Caravan-FIX: when the map script committed an override_map_start
+                // during this load AND the pending transition is a same-map
+                // relocation (no map re-load), the script's start position is
+                // authoritative — do not let the transition's tile/elevation
+                // displacement override it. Cross-map transitions (exit grids
+                // to a new map, elevators between maps) still apply normally.
+                if (scriptOverrideActive && gMapTransition.map == gMapHeader.index) {
+                    debugPrint("[DBGTRACE] mapHandleTransition: suppressing post-override same-map relocation (script tile=%d elev=%d, transition tile=%d elev=%d)\n",
+                        scriptOverride.tile, scriptOverride.elevation, gMapTransition.tile, gMapTransition.elevation);
+                } else {
+                    objectSetLocation(gDude, gMapTransition.tile, gMapTransition.elevation, nullptr);
+                    mapSetElevation(gMapTransition.elevation);
+                    objectSetRotation(gDude, gMapTransition.rotation, nullptr);
+                }
             }
 
             if (tileSetCenter(gDude->tile, TILE_SET_CENTER_REFRESH_WINDOW) == -1) {

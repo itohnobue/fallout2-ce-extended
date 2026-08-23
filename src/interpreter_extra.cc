@@ -569,6 +569,18 @@ static void opOverrideMapStart(Program* program)
     int tile = 200 * y + x;
     int previousTile = gCenterTile;
     if (tile != -1) {
+        // Caravan-FIX (elevation coherence): the override's elevation is the
+        // intended map elevation (FO1-CE contract — the dude may never sit on
+        // a different elevation than the map/combat elevation). Committing it
+        // keeps gElevation, the combat list and the dude in agreement, and
+        // records the position so the engine's own post-load motion cannot
+        // fight this script decision.
+        if (mapSetElevation(elevation) != 0) {
+            debugPrint("\nScript Error: %s: op_override_map_start: map_set_elevation failed", program->name);
+        } else {
+            mapScriptOverrideStartCommitted(tile, elevation, rotation);
+        }
+
         if (objectSetRotation(gDude, rotation, nullptr) != 0) {
             scriptError("\nError: %s: obj_set_rotation failed in override_map_start!", program->name);
         }
@@ -584,6 +596,7 @@ static void opOverrideMapStart(Program* program)
 
         tileSetCenter(tile, TILE_SET_CENTER_REFRESH_WINDOW);
         tileWindowRefresh();
+        debugPrint("[DBGTRACE] override_map_start: dude now tile=%d elev=%d\n", gDude->tile, (int)gDude->elevation);
     }
 
     program->flags &= ~PROGRAM_FLAG_CHILD_CALL;
@@ -1903,6 +1916,23 @@ static void opAttackComplex(Program* program)
         return;
     }
 
+    // DBGTRACE (caravan self-attack): identify the requesting script and the
+    // resolved attacker/defender BEFORE the request is formed. The caravan
+    // encounter crash-path log showed "dude -> dude", i.e. self resolved to
+    // the player — this trace names the script so the root cause can be
+    // pinned (script self/owner resolution vs. script-side attacker args).
+    debugPrint("[DBGTRACE] attack(): program=%s self=%s(pid=%#x) target=%s(pid=%#x) args=%d,%d,%d,%d,%d,%d,%d\n",
+        program->name,
+        self != nullptr
+            ? (self->pid == gDude->pid ? "dude" : (objectTypeFromPid(self->pid) == OBJ_TYPE_CRITTER ? critterGetName(self) : "non-critter"))
+            : "(none)",
+        self != nullptr ? self->pid : 0,
+        target != nullptr
+            ? (target->pid == gDude->pid ? "dude" : (objectTypeFromPid(target->pid) == OBJ_TYPE_CRITTER ? critterGetName(target) : "non-critter"))
+            : "(none)",
+        target != nullptr ? target->pid : 0,
+        data[6], data[5], data[4], data[3], data[2], data[1], data[0]);
+
     if (!critterIsActive(self) || (self->flags & OBJECT_HIDDEN) != OBJECT_NONE) {
         debugPrint("\n   But is already Inactive (Dead/Stunned/Invisible)");
         program->flags &= ~PROGRAM_FLAG_CHILD_CALL;
@@ -3103,13 +3133,23 @@ static void opCritterAttemptPlacement(Program* program)
         return;
     }
 
+    // DBGTRACE (caravan self-attack): placement path debug.
+    debugPrint("[DBGTRACE] critter_attempt_placement: program=%s critter=%s pid=%#x cur_elev=%d want_elev=%d tile=%d\n",
+        program->name,
+        critter->pid == gDude->pid ? "dude" : (objectTypeFromPid(critter->pid) == OBJ_TYPE_CRITTER ? critterGetName(critter) : "non-critter"),
+        critter->pid, (int)critter->elevation, elevation, tile);
+
     if (elevation != critter->elevation && objectTypeFromPid(critter->pid) == OBJ_TYPE_CRITTER) {
+        debugPrint("[DBGTRACE] critter_attempt_placement: DELETING critter (elevation mismatch) %s pid=%#x\n",
+            critter->pid == gDude->pid ? "dude" : critterGetName(critter), critter->pid);
         _combat_delete_critter(critter);
     }
 
     objectSetLocation(critter, 0, elevation, nullptr);
 
     int rc = objectAttemptPlacement(critter, tile, elevation, 1);
+    debugPrint("[DBGTRACE] critter_attempt_placement: rc=%d final_tile=%d final_elev=%d\n",
+        rc, critter->tile, (int)critter->elevation);
     programStackPushInteger(program, rc);
 }
 
@@ -4834,6 +4874,19 @@ static void opAttackSetup(Program* program)
 {
     Object* defender = static_cast<Object*>(programStackPopPointer(program));
     Object* attacker = static_cast<Object*>(programStackPopPointer(program));
+
+    // DBGTRACE (caravan self-attack): identify the requesting script and the
+    // explicit attacker/defender passed by the script.
+    debugPrint("[DBGTRACE] attack_setup(): program=%s attacker=%s(pid=%#x) defender=%s(pid=%#x)\n",
+        program->name,
+        attacker != nullptr
+            ? (attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(attacker) : "non-critter"))
+            : "(null)",
+        attacker != nullptr ? attacker->pid : 0,
+        defender != nullptr
+            ? (defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(defender) : "non-critter"))
+            : "(null)",
+        defender != nullptr ? defender->pid : 0);
 
     program->flags |= PROGRAM_FLAG_CHILD_CALL;
 

@@ -3187,6 +3187,17 @@ static HitLocation _ai_called_shot(Object* attacker, Object* defender, HitMode h
 // 0x42A748
 static int _ai_attack(Object* attacker, Object* defender, HitMode hitMode)
 {
+    // DBGTRACE (caravan self-attack): AI attack initiation — who attacks whom.
+    debugPrint("[DBGTRACE] _ai_attack: attacker=%s(pid=%#x) defender=%s(pid=%#x)\n",
+        attacker != nullptr
+            ? (attacker->pid == gDude->pid ? "dude" : (objectTypeFromPid(attacker->pid) == OBJ_TYPE_CRITTER ? critterGetName(attacker) : "non-critter"))
+            : "(null)",
+        attacker != nullptr ? attacker->pid : 0,
+        defender != nullptr
+            ? (defender->pid == gDude->pid ? "dude" : (objectTypeFromPid(defender->pid) == OBJ_TYPE_CRITTER ? critterGetName(defender) : "non-critter"))
+            : "(null)",
+        defender != nullptr ? defender->pid : 0);
+
     if ((attacker->data.critter.combat.maneuver & CRITTER_MANUEVER_FLEEING) != CRITTER_MANEUVER_NONE) {
         return -1;
     }

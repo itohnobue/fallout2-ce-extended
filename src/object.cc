@@ -1404,6 +1404,12 @@ int objectSetLocation(Object* obj, int tile, int elevation, Rect* rect)
         return -1;
     }
 
+    // DBGTRACE (caravan relocation hunt): the dude's every movement.
+    if (obj == gDude) {
+        debugPrint("[DBGTRACE] objectSetLocation(gDude): tile=%d->%d elev=%d->%d ra=%p\n",
+            obj->tile, tile, (int)obj->elevation, elevation, __builtin_return_address(0));
+    }
+
     if (!hexGridTileIsValid(tile)) {
         return -1;
     }
