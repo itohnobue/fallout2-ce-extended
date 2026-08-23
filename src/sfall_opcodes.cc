@@ -1515,18 +1515,6 @@ static void op_get_attack_type(Program* program)
 static bool sfallVfsPathContainsTraversal(const char* path);
 static bool sfallVfsResolvePath(const char* rawPath, char* outBuf, size_t outBufSize);
 
-static void op_force_aimed_shots(Program* program)
-{
-    int pid = programStackPopInteger(program);
-    forceAimedShots(pid);
-}
-
-static void op_disable_aimed_shots(Program* program)
-{
-    int pid = programStackPopInteger(program);
-    disableAimedShots(pid);
-}
-
 static void op_play_sfall_sound(Program* program)
 {
     int mode = programStackPopInteger(program);
@@ -5754,14 +5742,18 @@ static void op_force_aimed_shots(Program* program)
 {
     int pid = programStackPopInteger(program);
     gForceAimedShotsMap[pid] = true;
-    debugPrint("force_aimed_shots(pid=%d) — per-critter aimed-shot override stored, combat integration pending\n", pid);
+    debugPrint("force_aimed_shots(pid=%d) — per-critter aimed-shot override stored\n", pid);
+    // Upstream #701: also seed the engine-level skip set so critterCanAim
+    // honors the override at combat time.
+    forceAimedShots(pid);
 }
 
 static void op_disable_aimed_shots(Program* program)
 {
     int pid = programStackPopInteger(program);
     gDisableAimedShotsMap[pid] = true;
-    debugPrint("disable_aimed_shots(pid=%d) — per-critter aimed-shot override stored, combat integration pending\n", pid);
+    debugPrint("disable_aimed_shots(pid=%d) — per-critter aimed-shot override stored\n", pid);
+    disableAimedShots(pid);
 }
 
 // ============================================================
@@ -7913,6 +7905,18 @@ void sfallOpcodeStateLoad()
                     sfall_gl_vars_fetch(key, ival);
                     gDisableAimedShotsMap[pid] = (ival != 0);
                 }
+            }
+        }
+        // Upstream #701: seed the engine-level pid sets from the restored
+        // fork maps so critterCanAim honors saved force/disable overrides.
+        for (const auto& entry : gForceAimedShotsMap) {
+            if (entry.second) {
+                forceAimedShots(entry.first);
+            }
+        }
+        for (const auto& entry : gDisableAimedShotsMap) {
+            if (entry.second) {
+                disableAimedShots(entry.first);
             }
         }
     }

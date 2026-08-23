@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "art.h"
+#include "color.h"
 #include "cycle.h"
 #include "dbox.h"
 #include "debug.h"

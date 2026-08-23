@@ -43,6 +43,7 @@
 #include "sfall_metarules.h"
 #include "sfall_opcodes.h"
 #include "sfall_script_hooks.h"
+#include "settings.h"
 #include "skill.h"
 #include "stat.h"
 #include "svga.h"
@@ -2332,7 +2333,6 @@ static void characterEditorDrawPerksFolder()
                 && currentLineIndex < gCharacterEditorFolderViewTopLine + gCharacterEditorFolderViewMaxLines) {
                 characterEditorDrawPerkProgressBar(
                     currentY, perkLevel, maxRank, isHighlighted ? COLOR_LIGHT_YELLOW : COLOR_GREEN);
-            }
             }
         }
     }
@@ -6942,7 +6942,6 @@ static int perkDialogDrawPerks()
             char rankString[256];
             snprintf(rankString, sizeof(rankString), "(%d)", perkGetRank(gDude, perk));
             fontDrawText(gPerkDialogWindowBuffer + PERK_WINDOW_WIDTH * y + 207, rankString, PERK_WINDOW_WIDTH, PERK_WINDOW_WIDTH, color);
-        }
         }
 
         y += yStep;
