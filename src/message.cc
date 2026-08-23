@@ -290,7 +290,7 @@ bool messageListLoad(MessageList* messageList, const char* path)
 err:
 
     if (!success) {
-        debugPrint("Error loading message file %s at offset %x.", localized_path, fileTell(file_ptr));
+        debugPrint("Error loading message file %s at offset %lx.", localized_path, static_cast<unsigned long>(fileTell(file_ptr)));
     }
 
     fileClose(file_ptr);

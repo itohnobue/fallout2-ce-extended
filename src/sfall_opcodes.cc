@@ -1049,13 +1049,6 @@ static void op_get_proto_data(Program* program)
     int rawOffset = programStackPopInteger(program);
     int pid = programStackPopInteger(program);
 
-    if (rawOffset < 0) {
-        programPrintError("get_proto_data: negative offset %d not allowed", rawOffset);
-        programStackPushInteger(program, -1);
-        return;
-    }
-    size_t offset = static_cast<size_t>(rawOffset);
-
     Proto* proto;
     if (protoGetProto(pid, &proto) != 0) {
         programPrintError("get_proto_data: bad proto %d", pid);
@@ -1065,8 +1058,16 @@ static void op_get_proto_data(Program* program)
 
     // CE: Make sure the requested offset is within memory bounds and is
     // properly aligned.
-    if (offset + sizeof(int) > proto_size(objectTypeFromPid(pid)) || offset % sizeof(int) != 0) {
-        programPrintError("get_proto_data: bad offset %d", offset);
+    if (rawOffset < 0 || rawOffset % static_cast<int>(sizeof(int)) != 0) {
+        programPrintError("get_proto_data: bad offset %d", rawOffset);
+        programStackPushInteger(program, -1);
+        return;
+    }
+
+    size_t offset = static_cast<size_t>(rawOffset);
+    size_t size = proto_size(objectTypeFromPid(pid));
+    if (offset > size || size - offset < sizeof(int)) {
+        programPrintError("get_proto_data: bad offset %zu", offset);
         programStackPushInteger(program, -1);
         return;
     }
@@ -1082,12 +1083,6 @@ static void op_set_proto_data(Program* program)
     int rawOffset = programStackPopInteger(program);
     int pid = programStackPopInteger(program);
 
-    if (rawOffset < 0) {
-        programPrintError("set_proto_data: negative offset %d not allowed", rawOffset);
-        return;
-    }
-    size_t offset = static_cast<size_t>(rawOffset);
-
     Proto* proto;
     if (protoGetProto(pid, &proto) != 0) {
         programPrintError("set_proto_data: bad proto %d", pid);
@@ -1096,8 +1091,15 @@ static void op_set_proto_data(Program* program)
 
     // CE: Make sure the requested offset is within memory bounds and is
     // properly aligned.
-    if (offset + sizeof(int) > proto_size(objectTypeFromPid(pid)) || offset % sizeof(int) != 0) {
-        programPrintError("set_proto_data: bad offset %d", offset);
+    if (rawOffset < 0 || rawOffset % static_cast<int>(sizeof(int)) != 0) {
+        programPrintError("set_proto_data: bad offset %d", rawOffset);
+        return;
+    }
+
+    size_t offset = static_cast<size_t>(rawOffset);
+    size_t size = proto_size(objectTypeFromPid(pid));
+    if (offset > size || size - offset < sizeof(int)) {
+        programPrintError("set_proto_data: bad offset %zu", offset);
         return;
     }
 
