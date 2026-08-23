@@ -2773,7 +2773,7 @@ static void characterEditorDrawGender()
         width * _editorFrmImages[EDITOR_GRAPHIC_SEX_OFF].getHeight());
 
     x += 6 * width;
-    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_SEX_ON] + x, text, width, width, COLOR_DARK_YELLOW_2);
+    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_SEX_ON] + x + width, text, width, width, COLOR_DARK_YELLOW_2);
     fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_SEX_OFF] + x, text, width, width, COLOR_DARK_YELLOW);
 }
 
@@ -2803,7 +2803,7 @@ static void characterEditorDrawAge()
         width * _editorFrmImages[EDITOR_GRAPHIC_AGE_ON].getHeight());
 
     x += 6 * width;
-    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_AGE_ON] + x, text, width, width, COLOR_DARK_YELLOW_2);
+    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_AGE_ON] + x + width, text, width, width, COLOR_DARK_YELLOW_2);
     fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_AGE_OFF] + x, text, width, width, COLOR_DARK_YELLOW);
 }
 
@@ -2859,7 +2859,7 @@ static void characterEditorDrawName()
         _editorFrmImages[EDITOR_GRAPHIC_NAME_OFF].getWidth() * _editorFrmImages[EDITOR_GRAPHIC_NAME_OFF].getHeight());
 
     x += 6 * width;
-    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_NAME_ON] + x, text, width, width, COLOR_DARK_YELLOW_2);
+    fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_NAME_ON] + x + width, text, width, width, COLOR_DARK_YELLOW_2);
     fontDrawText(gCharacterEditorFrmCopy[EDITOR_GRAPHIC_NAME_OFF] + x, text, width, width, COLOR_DARK_YELLOW);
 }
 
