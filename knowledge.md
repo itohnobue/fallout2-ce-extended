@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-23T00:25:23.669156
+Last updated: 2026-08-23T01:43:07.729441
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -709,4 +709,18 @@ Tags: fallout2, ettu, rpu, sfall, metarule, save-corruption
 Changed: 2026-08-23T00:25:23.666581
 
 set_scr_name override poisoning (Issue B, 2026-08-23): the RPU/EtTu compat fork let mf_set_scr_name() write a GLOBAL script-file-name override (gScriptNameOverride) honored by scriptsGetFileName() BEFORE scripts.lst. One call of set_scr_name('Mike') from et-tu Mike.int made EVERY script (map script, doors, NPCs, party) load as Mike.int — log signature: programCreate flood of scripts\Mike.int + 'You see: Mike, the Old Town guard.' for every NPC (critter name = msg 101+scriptIndex, idx 820=Mike). Worse: the override was serialized into sfallgv.sav (metarule stream) so the poison survived save/load permanently (SLOT01 carried 'Mike'). Fix: scriptsGetFileName never applies the override; mf_set_scr_name is per-sid (sfallObjectNameSet) only; metarule load reads-and-discards the legacy slot (format kept). Test: tests/test_fixes_metarules.cc Issue B cases; 92/92 pass.
+
+## [got-20260823014259-8e5eb4]
+Category: gotcha
+Tags: barter, ettu, weight, gotcha
+Changed: 2026-08-23T01:42:59.816250
+
+FO1 box traders (et tu) are intentionally overweight: get_barter_inven/move_obj_inven_to_obj force-loads full stock at talk start (itemMoveAll = force). ANY non-force itemMove/itemAttemptAdd targeting the trader fails with rc=-6 (max weight) — including returning the trader's own items from the barter table. All barter moves must use itemMoveForce (barterMoveToTable, barterMoveFromTable both directions, barterAttemptTransaction M-90/M-101); weight gates only make sense on the player side (barterAttemptTransaction check).
+
+## [pat-20260823014307-d4e3fd]
+Category: pattern
+Tags: barter, pattern
+Changed: 2026-08-23T01:43:07.726974
+
+Barter move functions: the undo direction (table -> critter inventory) must use itemMoveForce like the setup direction (inventory -> table). Upstream CE uses itemMoveForce in BOTH branches of barterMoveFromTable. A non-force itemMove in any barter path is a regression trap for FO1 box traders; grep for non-force itemMove (not itemMoveForce/itemMoveAll) inside barter* functions when reviewing barter fixes. Prior fix e17707f2 fixed only barterAttemptTransaction and missed barterMoveFromTable — completed in adbcc2f9 (M-101).
 
