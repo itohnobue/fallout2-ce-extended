@@ -4065,12 +4065,15 @@ void mf_set_can_rest_on_map(OpcodeContext& ctx)
 // ============================================================
 // Rest Mode — sfall contract translation (UF-H-035)
 //
-// sfall defines rest_mode as a bitmask:
-//   SFALL_RESTMODE_NO_HEALING   = 1  (suppress healing during rest)
-//   SFALL_RESTMODE_STRICT       = 2  (only allow rest on explicit tiles)
-//   SFALL_RESTMODE_UNTIL_HEALED = 4  (rest until fully healed, CE unimplemented)
+// Real sfall rest-mode bit flags (sfall.h):
+//   RESTMODE_DISABLED   = 1  (rest never allowed)
+//   RESTMODE_STRICT     = 2  (only allow rest on explicit tiles)
+//   RESTMODE_NO_HEALING = 4  (suppress healing during rest)
+// There is NO "until healed" constant in sfall.  Passing 0 re-enables
+// the engine default (per sfall docs: "Passing 0 will reset the rest
+// mode"; sfall also resets it on game reload).
 //
-// CE's internal representation uses sequential integers:
+// CE's internal representation uses sequential integers (NOT a bitmask):
 //   -1 = default engine behavior
 //    0 = RESTMODE_DISABLED (rest never allowed)
 //    1 = RESTMODE_STRICT (only on explicitly-set tiles)
@@ -4078,19 +4081,18 @@ void mf_set_can_rest_on_map(OpcodeContext& ctx)
 //
 // These numbering schemes are INCOMPATIBLE — without translation, every
 // sfall value maps to the wrong CE behavior.  Et Tu's LARIPPER.ssl calls
-// set_rest_mode(RESTMODE_STRICT) sending 2, which CE interprets as
-// RESTMODE_NO_HEALING instead.
+// set_rest_mode(0) (reset) and set_rest_mode(RESTMODE_STRICT=2).
 //
-// CE does not implement UNTIL_HEALED; the bit is silently dropped.
-// Combined RESTMODE_STRICT|RESTMODE_NO_HEALING (3) maps to
-// RESTMODE_DISABLED (0) since CE cannot express the combination:
-// strict tile enforcement + healing suppression = functionally "no rest."
+// CE cannot express the STRICT + NO_HEALING combination (its mode is a
+// single integer, not a bitmask) — such combinations map to
+// RESTMODE_DISABLED as the safest fallback: strict tile enforcement plus
+// healing suppression together mean "no useful rest."
 // ============================================================
 
-// sfall bitmask constants (authoritative from sfall source).
-static constexpr int kSfallRestmodeNoHealing = 1;
+// Real sfall rest-mode bit flags (sfall.h).
+static constexpr int kSfallRestmodeDisabled = 1;
 static constexpr int kSfallRestmodeStrict = 2;
-static constexpr int kSfallRestmodeUntilHealed = 4;
+static constexpr int kSfallRestmodeNoHealing = 4;
 
 // CE-internal rest mode values.
 static constexpr int kCeRestmodeDefault = -1;
@@ -4107,23 +4109,23 @@ static int translateSfallRestMode(int sfallMode)
         return kCeRestmodeDefault;
     }
 
+    // sfall: passing 0 resets the rest mode to the game default.
     if (sfallMode == 0) {
+        return kCeRestmodeDefault;
+    }
+
+    // Extract individual feature bits from the sfall bitmask
+    // (DISABLED=1, STRICT=2, NO_HEALING=4).
+    bool disabled = (sfallMode & kSfallRestmodeDisabled) != 0;
+    bool strict = (sfallMode & kSfallRestmodeStrict) != 0;
+    bool noHealing = (sfallMode & kSfallRestmodeNoHealing) != 0;
+
+    // DISABLED bans rest outright regardless of any other bit.
+    if (disabled) {
         return kCeRestmodeDisabled;
     }
 
-    // Extract individual feature bits from the sfall bitmask.
-    bool noHealing = (sfallMode & kSfallRestmodeNoHealing) != 0;
-    bool strict = (sfallMode & kSfallRestmodeStrict) != 0;
-    bool untilHealed = (sfallMode & kSfallRestmodeUntilHealed) != 0;
-
-    // UNTIL_HEALED is not implemented in CE — note the gap and proceed
-    // with the remaining bits.
-    if (untilHealed) {
-        debugPrint("set_rest_mode: UNTIL_HEALED (bit 4) requested but not "
-                    "implemented in CE engine; ignoring.\n");
-    }
-
-    // Both NO_HEALING and STRICT: CE cannot combine modes (they are
+    // STRICT + NO_HEALING together: CE cannot combine modes (they are
     // sequential integers, not a bitmask).  Strict tile enforcement
     // plus healing suppression together mean "no useful rest" —
     // map to DISABLED as the safest fallback.
@@ -4131,25 +4133,24 @@ static int translateSfallRestMode(int sfallMode)
         return kCeRestmodeDisabled;
     }
 
-    if (noHealing) {
-        return kCeRestmodeNoHealing;
-    }
-
     if (strict) {
         return kCeRestmodeStrict;
     }
 
-    // Only UNTIL_HEALED was set (already warned above) —
-    // fall back to engine default.
+    if (noHealing) {
+        return kCeRestmodeNoHealing;
+    }
+
+    // Unrecognized value — fall back to engine default.
     return kCeRestmodeDefault;
 }
 
 // set_rest_mode(int mode): stores the resting mode for both sfall persistence
 // and the worldmap rest system.
 //
-// Accepts a sfall rest_mode bitmask (0=disabled, 1=no_healing, 2=strict,
-// 4=until_healed, combinations supported) and translates it to the CE
-// internal mode before forwarding to wmSetRestMode().
+// Accepts a sfall rest_mode bitmask (DISABLED=1, STRICT=2, NO_HEALING=4;
+// passing 0 resets to the game default; combinations supported) and translates
+// it to the CE internal mode before forwarding to wmSetRestMode().
 //
 // Wired via wmSetRestMode() — consumed at worldmap.cc:3179 (rest allowance)
 // and party_member.cc:862 / pipboy.cc:2264 (healing suppression).
@@ -5292,6 +5293,8 @@ bool sfall_metarules_load(File* stream)
     // Replay restored healing/rest values to the worldmap system so that
     // consumers (worldmap.cc:3258, wmMapCanRestHere, wmGetRestMode) see the
     // restored overrides instead of defaulting to -1.
+    // Note: CE persists the rest mode across save/load; real sfall resets it
+    // on reload. This persistence divergence is a documented design decision.
     wmSetWorldmapHealTime(gWorldmapHealTime);
     wmSetRestHealTime(gRestHealTime);
     wmSetRestMode(gRestMode);

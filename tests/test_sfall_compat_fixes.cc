@@ -17,18 +17,23 @@
 // UF-H-035: Rest mode bitmask translation
 // Mirror of translateSfallRestMode() in sfall_metarules.cc.
 //
-// sfall defines rest_mode as a bitmask:
-//   SFALL_RESTMODE_NO_HEALING   = 1
-//   SFALL_RESTMODE_STRICT       = 2
-//   SFALL_RESTMODE_UNTIL_HEALED = 4
+// NOTE: This mirrors the CORRECTED contract (applied after the wrong
+// table authored by 7f583564).  Real sfall defines rest_mode as a
+// bitmask:
+//   SFALL_RESTMODE_DISABLED   = 1  (bans rest outright)
+//   SFALL_RESTMODE_STRICT     = 2  (only allow rest on explicit tiles)
+//   SFALL_RESTMODE_NO_HEALING = 4  (suppress healing during rest)
+// There is NO "until healed" constant in sfall.
 //
-// CE internal modes:
+// sfall input 0 means "reset to the game default" (per sfall docs).
+//
+// CE internal modes (sequential integers, NOT a bitmask):
 //   -1 = default, 0 = disabled, 1 = strict, 2 = no_healing
 // =================================================================
 
-static constexpr int kSfallRestmodeNoHealing = 1;
+static constexpr int kSfallRestmodeDisabled = 1;
 static constexpr int kSfallRestmodeStrict = 2;
-static constexpr int kSfallRestmodeUntilHealed = 4;
+static constexpr int kSfallRestmodeNoHealing = 4;
 
 static constexpr int kCeRestmodeDefault = -1;
 static constexpr int kCeRestmodeDisabled = 0;
@@ -38,45 +43,55 @@ static constexpr int kCeRestmodeNoHealing = 2;
 /// Mirror of translateSfallRestMode() from sfall_metarules.cc.
 static int translateSfallRestMode(int sfallMode)
 {
+    // -1 is the sentinel for "use default engine behavior" in both systems.
     if (sfallMode == kCeRestmodeDefault) {
         return kCeRestmodeDefault;
     }
 
+    // sfall: passing 0 resets the rest mode to the game default.
     if (sfallMode == 0) {
+        return kCeRestmodeDefault;
+    }
+
+    // Extract individual feature bits (DISABLED=1, STRICT=2, NO_HEALING=4).
+    bool disabled = (sfallMode & kSfallRestmodeDisabled) != 0;
+    bool strict = (sfallMode & kSfallRestmodeStrict) != 0;
+    bool noHealing = (sfallMode & kSfallRestmodeNoHealing) != 0;
+
+    // DISABLED bans rest outright regardless of any other bit.
+    if (disabled) {
         return kCeRestmodeDisabled;
     }
 
-    bool noHealing = (sfallMode & kSfallRestmodeNoHealing) != 0;
-    bool strict = (sfallMode & kSfallRestmodeStrict) != 0;
-    bool untilHealed = (sfallMode & kSfallRestmodeUntilHealed) != 0;
-
-    (void)untilHealed;  // UNTIL_HEALED not implemented in CE
-
+    // STRICT + NO_HEALING together: CE cannot combine modes (they are
+    // sequential integers, not a bitmask) — map to DISABLED as the
+    // safest fallback.
     if (noHealing && strict) {
         return kCeRestmodeDisabled;
-    }
-
-    if (noHealing) {
-        return kCeRestmodeNoHealing;
     }
 
     if (strict) {
         return kCeRestmodeStrict;
     }
 
+    if (noHealing) {
+        return kCeRestmodeNoHealing;
+    }
+
+    // Unrecognized value — fall back to engine default.
     return kCeRestmodeDefault;
 }
 
 TEST_CASE("UF-H-035: Rest mode bitmask translation — sfall → CE")
 {
-    SUBCASE("sfall 0 → CE DISABLED")
+    SUBCASE("sfall 0 (reset) → CE DEFAULT")
     {
-        CHECK_EQ(translateSfallRestMode(0), kCeRestmodeDisabled);
+        CHECK_EQ(translateSfallRestMode(0), kCeRestmodeDefault);
     }
 
-    SUBCASE("sfall 1 (NO_HEALING) → CE NO_HEALING")
+    SUBCASE("sfall 1 (DISABLED) → CE DISABLED")
     {
-        CHECK_EQ(translateSfallRestMode(1), kCeRestmodeNoHealing);
+        CHECK_EQ(translateSfallRestMode(1), kCeRestmodeDisabled);
     }
 
     SUBCASE("sfall 2 (STRICT) → CE STRICT")
@@ -84,27 +99,27 @@ TEST_CASE("UF-H-035: Rest mode bitmask translation — sfall → CE")
         CHECK_EQ(translateSfallRestMode(2), kCeRestmodeStrict);
     }
 
-    SUBCASE("sfall 4 (UNTIL_HEALED) → CE DEFAULT (unimplemented)")
+    SUBCASE("sfall 4 (NO_HEALING) → CE NO_HEALING")
     {
-        CHECK_EQ(translateSfallRestMode(4), kCeRestmodeDefault);
+        CHECK_EQ(translateSfallRestMode(4), kCeRestmodeNoHealing);
     }
 
-    SUBCASE("sfall 6 (STRICT|UNTIL_HEALED) → CE STRICT (until_healed ignored)")
-    {
-        CHECK_EQ(translateSfallRestMode(6), kCeRestmodeStrict);
-    }
-
-    SUBCASE("sfall 3 (NO_HEALING|STRICT) → CE DISABLED (combined)")
+    SUBCASE("sfall 3 (DISABLED|STRICT) → CE DISABLED (disabled wins)")
     {
         CHECK_EQ(translateSfallRestMode(3), kCeRestmodeDisabled);
     }
 
-    SUBCASE("sfall 5 (NO_HEALING|UNTIL_HEALED) → CE NO_HEALING")
+    SUBCASE("sfall 5 (DISABLED|NO_HEALING) → CE DISABLED (disabled wins)")
     {
-        CHECK_EQ(translateSfallRestMode(5), kCeRestmodeNoHealing);
+        CHECK_EQ(translateSfallRestMode(5), kCeRestmodeDisabled);
     }
 
-    SUBCASE("sfall 7 (all three) → CE DISABLED")
+    SUBCASE("sfall 6 (STRICT|NO_HEALING) → CE DISABLED (cannot combine)")
+    {
+        CHECK_EQ(translateSfallRestMode(6), kCeRestmodeDisabled);
+    }
+
+    SUBCASE("sfall 7 (all three) → CE DISABLED (disabled wins)")
     {
         CHECK_EQ(translateSfallRestMode(7), kCeRestmodeDisabled);
     }
@@ -112,6 +127,11 @@ TEST_CASE("UF-H-035: Rest mode bitmask translation — sfall → CE")
     SUBCASE("sfall -1 (default sentinel) → CE DEFAULT")
     {
         CHECK_EQ(translateSfallRestMode(-1), kCeRestmodeDefault);
+    }
+
+    SUBCASE("sfall 8 (unrecognized bit) → CE DEFAULT")
+    {
+        CHECK_EQ(translateSfallRestMode(8), kCeRestmodeDefault);
     }
 }
 
