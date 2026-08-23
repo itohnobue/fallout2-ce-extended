@@ -1346,6 +1346,19 @@ static int unequipLootArmorFunc(Object* critter)
 
     armor->flags &= ~OBJECT_WORN;
     adjustCritterStatsOnArmorChange(critter, armor, nullptr);
+
+    // IS-01: refresh the on-map sprite after removing a non-dude party
+    // member's armor so the companion no longer shows the removed armor's
+    // frame. The post-removal frame is the critter's own base (proto) frame.
+    int baseFrmId = critter->fid & 0xFFF;
+    Proto* proto;
+    if (protoGetProto(critter->pid, &proto) != -1) {
+        baseFrmId = proto->fid & 0xFFF;
+    }
+    int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation + 1);
+    Rect rect;
+    objectSetFid(critter, fid, &rect);
+    tileWindowRefreshRect(&rect, critter->elevation);
     return 0;
 }
 
@@ -3925,6 +3938,14 @@ int inventoryEquipFunc(Object* critter, Object* item, Hand handIndex, bool anima
             }
         } else {
             adjustCritterStatsOnArmorChange(critter, armor, item);
+            // IS-01: refresh the on-map sprite for non-dude party members so
+            // armor equips apply immediately. Mirrors the gDude branch above
+            // and the weapon branch below, both of which refresh the fid but
+            // which the armor branch lacked for non-dude critters.
+            int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation + 1);
+            Rect rect;
+            objectSetFid(critter, fid, &rect);
+            tileWindowRefreshRect(&rect, critter->elevation);
         }
     } else {
         Hand hand;
@@ -5895,6 +5916,18 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
     Object* armor = critterGetArmor(barterer);
     if (armor != nullptr) {
         itemRemoveWithReason(barterer, armor, 1, RemoveInventoryObjectHookReason::BarterArmor);
+
+        // IS-01: refresh the barterer's sprite after stripping its armor for
+        // the trade so the sprite no longer shows the removed armor's frame.
+        int baseFrmId = barterer->fid & 0xFFF;
+        Proto* proto;
+        if (protoGetProto(barterer->pid, &proto) != -1) {
+            baseFrmId = proto->fid & 0xFFF;
+        }
+        int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(barterer->fid), barterer->rotation + 1);
+        Rect rect;
+        objectSetFid(barterer, fid, &rect);
+        tileWindowRefreshRect(&rect, barterer->elevation);
     }
 
     Object* item1 = nullptr;
@@ -6233,6 +6266,32 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
     if (item1 != nullptr) {
         itemAdd(barterer, item1, 1);
     }
+
+    // IS-01: refresh the barterer's sprite to the actual post-barter armor
+    // state (armored frame if armor is worn again, otherwise the base frame).
+    // Handles both the sold-armor case (armor not restored -> base frame) and
+    // the retained-armor case (armor re-worn -> armored frame).
+    int baseFrmId = barterer->fid & 0xFFF;
+    Object* wornArmor = critterGetArmor(barterer);
+    if (wornArmor != nullptr) {
+        if (critterGetStat(barterer, STAT_GENDER) == GENDER_FEMALE) {
+            baseFrmId = armorGetFemaleFid(wornArmor);
+        } else {
+            baseFrmId = armorGetMaleFid(wornArmor);
+        }
+        if (baseFrmId == -1) {
+            baseFrmId = 1;
+        }
+    } else {
+        Proto* proto;
+        if (protoGetProto(barterer->pid, &proto) != -1) {
+            baseFrmId = proto->fid & 0xFFF;
+        }
+    }
+    int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(barterer->fid), barterer->rotation + 1);
+    Rect rect;
+    objectSetFid(barterer, fid, &rect);
+    tileWindowRefreshRect(&rect, barterer->elevation);
 
     gInventoryWindowDudeFid = savedDudeFid;
     _exit_inventory(isoWasEnabled);

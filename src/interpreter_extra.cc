@@ -487,6 +487,16 @@ int correctFidForRemovedItem(Object* critter, Object* item, ObjectFlags flags)
     } else {
         if (critter == gDude) {
             newFid = buildFid(objectTypeFromFid(fid), _art_vault_guy_num, animationTypeFromFid(fid), weaponCode, rotationFromFid(fid));
+        } else {
+            // IS-01: for non-dude critters, rebuild the armor-removed fid from
+            // the critter's own base (proto) frame instead of leaving the
+            // removed armor's frame on the sprite.
+            int baseFrmId = fid & 0xFFF;
+            Proto* proto;
+            if (protoGetProto(critter->pid, &proto) != -1) {
+                baseFrmId = proto->fid & 0xFFF;
+            }
+            newFid = buildFid(objectTypeFromFid(fid), baseFrmId, animationTypeFromFid(fid), weaponCode, rotationFromFid(fid));
         }
 
         adjustCritterStatsOnArmorChange(critter, item, nullptr);

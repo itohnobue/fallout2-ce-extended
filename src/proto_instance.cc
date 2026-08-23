@@ -676,18 +676,27 @@ static int _obj_remove_from_inven(Object* critter, Object* item)
                 appearanceUpdateType = 1;
             }
         } else if (slot == InvenSlot::Armor) {
+            int armorBaseFid;
             if (critter == gDude) {
-                int defaultFid = 1;
+                armorBaseFid = 1;
 
                 Proto* proto;
                 if (protoGetProto(0x1000000, &proto) != -1) {
-                    defaultFid = proto->fid;
+                    armorBaseFid = proto->fid;
                 }
-
-                fid = buildFid(OBJ_TYPE_CRITTER, defaultFid, animationTypeFromFid(critter->fid), weaponAnimationFromFid(critter->fid), critter->rotation);
-                objectSetFid(critter, fid, &updatedRect);
-                appearanceUpdateType = 3;
+            } else {
+                // IS-01: for non-dude critters, rebuild the armor-removed fid
+                // from the critter's own base (proto) frame.
+                armorBaseFid = critter->fid & 0xFFF;
+                Proto* proto;
+                if (protoGetProto(critter->pid, &proto) != -1) {
+                    armorBaseFid = proto->fid & 0xFFF;
+                }
             }
+
+            fid = buildFid(OBJ_TYPE_CRITTER, armorBaseFid, animationTypeFromFid(critter->fid), weaponAnimationFromFid(critter->fid), critter->rotation);
+            objectSetFid(critter, fid, &updatedRect);
+            appearanceUpdateType = 3;
         }
     }
 
