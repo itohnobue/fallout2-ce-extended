@@ -765,14 +765,6 @@ char* perkGetName(Perk perk)
     return gPerkDescriptions[perk].name ? gPerkDescriptions[perk].name : (char*)"";
 }
 
-int perkGetMaxRank(Perk perk)
-{
-    if (!perkIsValid(perk)) {
-        return 0;
-    }
-    return gPerkDescriptions[perk].maxRank;
-}
-
 // 0x496BB4 perk_description
 // Returns the description of the specified perk, or nullptr if the perk index
 // is invalid. Returns "" if valid but description was not loaded.

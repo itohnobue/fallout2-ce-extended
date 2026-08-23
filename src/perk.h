@@ -19,7 +19,6 @@ int perkRemove(Object* critter, Perk perk);
 int perkGetAvailablePerks(Object* critter, Perk* perks);
 int perkGetRank(Object* critter, Perk perk);
 char* perkGetName(Perk perk);
-int perkGetMaxRank(Perk perk);
 char* perkGetDescription(Perk perk);
 int perkGetFrmId(Perk perk);
 void perkAddEffect(Object* critter, Perk perk);

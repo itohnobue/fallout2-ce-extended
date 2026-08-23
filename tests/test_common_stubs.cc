@@ -488,11 +488,6 @@ namespace fallout {
         return -1;  // conservative: "perk has no ranks" in pre-init state
     }
 
-    int perkGetMaxRank(Perk /*perk*/)
-    {
-        return -1;  // conservative: "perk has no ranks" in pre-init state
-    }
-
 } // namespace fallout
 
 // =============================================================
