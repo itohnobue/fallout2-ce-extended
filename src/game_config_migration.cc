@@ -57,6 +57,7 @@ namespace {
         // a migrated HRP user who disabled edge clipping (EDGE_CLIPPING_ON=0)
         // silently got edge loading re-enabled (edg_support defaults true).
         { "MAPS", "EDGE_CLIPPING_ON", GAME_CONFIG_UI_KEY, "edg_support" },
+        { "MAPS", "IGNORE_PLAYER_SCROLL_LIMITS", GAME_CONFIG_UI_KEY, GAME_CONFIG_IGNORE_SCROLL_LIMIT_KEY },
         { "MAPS", "IGNORE_MAP_EDGES", GAME_CONFIG_UI_KEY, GAME_CONFIG_IGNORE_MAP_EDGES_KEY },
         { "STATIC_SCREENS", "SPLASH_SCRN_SIZE", GAME_CONFIG_UI_KEY, GAME_CONFIG_SPLASH_SCREEN_SIZE_KEY },
         { "MOVIES", "MOVIE_SIZE", GAME_CONFIG_UI_KEY, GAME_CONFIG_MOVIE_ASPECT_FIT_KEY },
