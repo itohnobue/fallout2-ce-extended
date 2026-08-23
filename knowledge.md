@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-23T01:43:07.729441
+Last updated: 2026-08-23T16:16:40.589120
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -723,4 +723,18 @@ Tags: barter, pattern
 Changed: 2026-08-23T01:43:07.726974
 
 Barter move functions: the undo direction (table -> critter inventory) must use itemMoveForce like the setup direction (inventory -> table). Upstream CE uses itemMoveForce in BOTH branches of barterMoveFromTable. A non-force itemMove in any barter path is a regression trap for FO1 box traders; grep for non-force itemMove (not itemMoveForce/itemMoveAll) inside barter* functions when reviewing barter fixes. Prior fix e17707f2 fixed only barterAttemptTransaction and missed barterMoveFromTable — completed in adbcc2f9 (M-101).
+
+## [got-20260823161635-5f96bd]
+Category: gotcha
+Tags: overload, perk, merge, gotcha
+Changed: 2026-08-23T16:16:35.059861
+
+Adding a typed overload (e.g. perkGetMaxRank(Perk)) next to an existing int-overload (perkGetMaxRank(int)) silently changes behavior at ALL existing call sites that pass a typed enum arg — C++ overload resolution prefers the exact enum match, bypassing the int overload's extra semantics (here: set_perk_ranks override + -1 invalid contract). When merging upstream code that adds an enum-typed overload, grep existing callers first and check whether the new overload's semantics differ from the int overload; if they do, drop the new overload and let enum->int conversion bind to the canonical one (upstream #698 -> fork fix 6744652a). Same class as configGetInt default-overload gotcha (got-20260817234041).
+
+## [dis-20260823161640-cc3da9]
+Category: discovery
+Tags: upstream, sync
+Changed: 2026-08-23T16:16:40.586689
+
+Upstream sync pass 3 (2026-08-23): 47 upstream commits since 1cce144 analyzed. Before cherry-picking ANY upstream commit into this fork, run 'git rev-list --cherry-pick --right-only main...upstream/main' (patch-id-aware) + grep the tree for marker symbols — several commits (FPS counter #689, mod_skill_points_per_level #695, perk-carryover #367) were ALREADY integrated in adapted form. Rejected: 6f05d3d8 sound-list dynamic (#577) — et tu ships a tagged SNDLIST.LST (mods/fo1_base/sound/sfx/SNDLIST.LST) and upstream's directory-scan-only change would reorder FO1 sound tags; 436d5554 encounter-intros removal — fork has a working implementation; 68479c44 perk carryover — fork's gSfallPerkOwed + sfall_gl_vars persistence replaces upstream's per-level vector + ce.sav sidecar (functionally equivalent, deliberately different architecture). Integrated 13 commits adapted (enum-based Map*/Rotation* upstream APIs adapted to fork's int-based worldmap).
 
