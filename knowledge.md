@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-23T20:52:46.777166
+Last updated: 2026-08-24T03:52:26.130422
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -758,4 +758,32 @@ Tags: lineage, fo1ce, fallout1, reference
 Changed: 2026-08-23T20:52:46.774433
 
 Repo lineage + canonical reference (verified via web + source fetches): alexbatalov/fallout2-re (decompile) -> alexbatalov/fallout2-ce (ORIGINAL CE) -> fallout2-ce/fallout2-ce org = this repo's  remote; alexbatalov/fallout1-ce (NOT 'alexbatalov/fallout-ce' — that name does not exist) is the separate vanilla-FO1 CE. The attack-combat flaw class (ungated _combat_attack_this(_gcsd->defender)) is IDENTICAL in the original FO2-CE and FO1-CE — it is original-batalov code, not a fork regression. When fixing FO1-in-2 problems on this fork, consult FO1-CE first for the canonical FO1 semantics (op_attack intextra.cc:1466, combat_attack_this combat.cc:2269, override_map_start intextra.cc:273, elevation filter object.cc:2419/2431).
+
+## [got-20260824035219-989e41]
+Category: gotcha
+Tags: game-time, gotcha, et-tu, engine
+Changed: 2026-08-24T03:52:19.271975
+
+Game-time units (FO2 engines): ONE_GAME_SECOND=10 ticks, ONE_GAME_MINUTE=600, ONE_GAME_HOUR=36000, ONE_GAME_DAY=864000 (define.h:801-804, scripts.h:22 GAME_TIME_TICKS_PER_DAY). game_time_advance(x) passes RAW TICKS to gameTimeAddTicks (interpreter_extra.cc:3074-3088) — NOT minutes/hours. GAME_TIME_IN_HOURS = game_time/36000. Trap: reading 60*(60*10) as '10 hours' by assuming 60 ticks/minute — it is exactly 1 game hour. Always check define.h ONE_GAME_* + scripts.h before asserting game-time magnitudes.
+
+## [got-20260824035221-bf0117]
+Category: gotcha
+Tags: sfall, rest-mode, metarules, gotcha, repeat-regression
+Changed: 2026-08-24T03:52:21.577821
+
+sfall set_rest_mode contract (real sfall.h: RESTMODE_DISABLED=1, STRICT=2, NO_HEALING=4; NO UNTIL_HEALED constant exists). set_rest_mode(0) = RESET (→ engine default -1), NOT disabled. Engine translator sfall_metarules.cc translateSfallRestMode: map 0→default(-1), 1→disabled(0), 2→strict(1), 4→noHealing(2), combos(1|2,2|4,1|4,1|2|4)→disabled(0), unknown→default. Prior 'fix' 7f583564 (UF-H-035) authored the WRONG table (invented UNTIL_HEALED=4; 0→Disabled) causing global rest ban via 99map/LARIPPER.ssl set_rest_mode(0) (enter + map_exit) — repeat regression, third attempt corrected it. CE persists rest mode in saves; sfall resets on reload (documented divergence).
+
+## [got-20260824035223-e2d5ba]
+Category: gotcha
+Tags: fid, armor, inventory, party, gotcha
+Changed: 2026-08-24T03:52:23.971026
+
+Non-dude critter armor FID staleness: inventoryEquipFunc (inventory.cc:3885) refreshes critter->fid ONLY for gDude (animationRegisterSetFid); the non-dude else on armor calls only adjustCritterStatsOnArmorChange → sprite stale until object recreated. Same asymmetry in canonical FO1-CE inventry.cc:2839-2844 (invisible there: no party-equip UI). Fix pattern (verified): after stats call, buildFid(OBJ_TYPE_CRITTER, armorBaseFrmId|protoBaseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation+1) + objectSetFid(critter,fid,&rect) + tileWindowRefreshRect(&rect,0) — set the POST-REMOVAL base from the critter proto base (proto->fid & 0xFFF), never from the removed armor's fid. Missing sites fixed: equip else, unequipLootArmorFunc, barter strip/close, correctFidForRemovedItem (unwield), _obj_remove_from_inven armor case.
+
+## [got-20260824035226-28de87]
+Category: gotcha
+Tags: healing, fo1, rest, worldmap, gotcha
+Changed: 2026-08-24T03:52:26.127700
+
+FO1-CE rest/travel heal is GRADUAL, not instant: partyMemberRestingHeal=(hours/3)×healingRate (tmp/fo1-ce/src/game/party.cc:438-459); pipboy rest _Check4Health fires after 180 rest-min; worldmap heals per game-day of travel. The fork's gFallout1Behavior instant-full-heal block (party_member.cc:878-895, from f40c9611 '50 verified fixes') deviated from real FO1 — DELETED. Post-fix worldmap heal math: loop fires every >1000 REAL ms while worldmap open (worldmap.cc:4041, not walking-gated, fires on open since partyHealTime=0) with healHours=3 → per-game-hour rate = R/30 HP (game time advances 0.5h/frame at ~60fps). Any new FO1-related gFallout1Behavior consumer must be checked against FO1-CE behavior, not assumptions.
 
