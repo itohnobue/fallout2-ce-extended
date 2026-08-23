@@ -7,6 +7,7 @@
 
 #include "art.h"
 #include "cycle.h"
+#include "dbox.h"
 #include "debug.h"
 #include "delay.h"
 #include "draw.h"
@@ -344,6 +345,17 @@ int elevatorSelectLevel(int elevator, int* mapPtr, int* elevationPtr, int* tileP
         return -1;
     }
 
+    if (gElevatorLevels[elevator] < 2 || gElevatorLevels[elevator] > ELEVATOR_LEVEL_MAX) {
+        char message[80];
+        snprintf(message, sizeof(message), "Elevator type %d not found.", elevator);
+        const char* body = "Check configuration";
+        showDialogBox(message, &body, 1, 192, 135, COLOR_AMBER, nullptr, COLOR_AMBER, DIALOG_BOX_LARGE);
+        debugPrint("\nElevator select: invalid button count type=%d buttonCount=%d",
+            elevator,
+            gElevatorLevels[elevator]);
+        return -1;
+    }
+
     // SFALL
     if (elevatorWindowInit(elevator) == -1) {
         return -1;
@@ -360,15 +372,9 @@ int elevatorSelectLevel(int elevator, int* mapPtr, int* elevationPtr, int* tileP
     }
 
     if (index < ELEVATOR_LEVEL_MAX) {
-        int targetLevel = *elevationPtr + index;
-
-        // Validate that target level is within bounds before indexing
-        // elevatorDescription. The sum could exceed ELEVATOR_LEVEL_MAX - 1,
-        // causing an OOB read on the 4-element array.
-        if (targetLevel >= 0 && targetLevel < ELEVATOR_LEVEL_MAX) {
-            if (elevatorDescription[targetLevel].tile != -1) {
-                *elevationPtr += index;
-            }
+        int adjustedIndex = *elevationPtr + index;
+        if (adjustedIndex >= 0 && adjustedIndex < ELEVATOR_LEVEL_MAX && elevatorDescription[adjustedIndex].tile != -1) {
+            *elevationPtr = adjustedIndex;
         }
     }
 
@@ -388,6 +394,11 @@ int elevatorSelectLevel(int elevator, int* mapPtr, int* elevationPtr, int* tileP
 
     if (*elevationPtr > 3) {
         *elevationPtr -= 3;
+    }
+
+    int clampedElevation = std::clamp(*elevationPtr, 0, gElevatorLevels[elevator] - 1);
+    if (clampedElevation != *elevationPtr) {
+        *elevationPtr = clampedElevation;
     }
 
     debugPrint("\n the start elev level %d\n", *elevationPtr);
@@ -420,7 +431,7 @@ int elevatorSelectLevel(int elevator, int* mapPtr, int* elevationPtr, int* tileP
             done = true;
         }
 
-        if (keyCode >= 500 && keyCode < 504) {
+        if (keyCode >= 500 && keyCode < 500 + gElevatorLevels[elevator]) {
             done = true;
         }
 
@@ -487,7 +498,7 @@ int elevatorSelectLevel(int elevator, int* mapPtr, int* elevationPtr, int* tileP
     elevatorWindowFree();
     touch_set_touchscreen_mode(false);
 
-    if (keyCode >= 0) {
+    if (keyCode >= 0 && keyCode < gElevatorLevels[elevator]) {
         const ElevatorDescription* description = &(elevatorDescription[keyCode]);
         *mapPtr = description->map;
         *elevationPtr = description->elevation;
@@ -690,62 +701,68 @@ void elevatorsInit()
 {
     char* elevatorsFileName;
     configGetString(&gSfallConfig, SFALL_CONFIG_MISC_KEY, SFALL_CONFIG_ELEVATORS_FILE_KEY, &elevatorsFileName);
-    if (elevatorsFileName != nullptr && *elevatorsFileName == '\0') {
-        elevatorsFileName = nullptr;
+    if (elevatorsFileName == nullptr || *elevatorsFileName == '\0') {
+        debugPrint("\nElevators init: no ElevatorsFile configured, custom elevators disabled");
+        return;
     }
 
-    if (elevatorsFileName != nullptr) {
-        Config elevatorsConfig;
-        if (configInit(&elevatorsConfig)) {
-            if (configRead(&elevatorsConfig, elevatorsFileName, false)) {
-                char sectionKey[4];
-                char key[32];
-                for (int index = 0; index < ELEVATORS_MAX; index++) {
-                    snprintf(sectionKey, sizeof(sectionKey), "%d", index);
+    Config elevatorsConfig;
+    if (!configInit(&elevatorsConfig)) {
+        return;
+    }
 
-                    if (index >= ELEVATOR_COUNT) {
-                        int levels = 0;
-                        configGetInt(&elevatorsConfig, sectionKey, "ButtonCount", &levels);
-                        gElevatorLevels[index] = std::clamp(levels, 2, ELEVATOR_LEVEL_MAX);
-                    }
+    if (!configRead(&elevatorsConfig, elevatorsFileName, false)) {
+        debugPrint("\nElevators init: failed to load %s", elevatorsFileName);
+        configFree(&elevatorsConfig);
+        return;
+    }
 
-                    configGetInt(&elevatorsConfig, sectionKey, "MainFrm", &(gElevatorBackgrounds[index].backgroundFrmId));
-                    configGetInt(&elevatorsConfig, sectionKey, "ButtonsFrm", &(gElevatorBackgrounds[index].panelFrmId));
+    char sectionKey[4];
+    char key[32];
+    for (int index = 0; index < ELEVATORS_MAX; index++) {
+        snprintf(sectionKey, sizeof(sectionKey), "%d", index);
 
-                    for (int level = 0; level < ELEVATOR_LEVEL_MAX; level++) {
-                        snprintf(key, sizeof(key), "ID%d", level + 1);
-                        configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].map));
-
-                        snprintf(key, sizeof(key), "Elevation%d", level + 1);
-                        configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].elevation));
-
-                        snprintf(key, sizeof(key), "Tile%d", level + 1);
-                        configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].tile));
-                    }
-                }
-
-                // NOTE: Sfall implementation is slightly different. It uses one
-                // loop and stores `type` value in a separate lookup table. This
-                // value is then used in the certain places to remap from
-                // requested elevator to the new one.
-                for (int index = 0; index < ELEVATORS_MAX; index++) {
-                    snprintf(sectionKey, sizeof(sectionKey), "%d", index);
-
-                    int type;
-                    if (configGetInt(&elevatorsConfig, sectionKey, "Image", &type)) {
-                        type = std::clamp(type, 0, ELEVATORS_MAX - 1);
-                        if (index != type) {
-                            memcpy(&(gElevatorBackgrounds[index]), &(gElevatorBackgrounds[type]), sizeof(*gElevatorBackgrounds));
-                            memcpy(&(gElevatorLevels[index]), &(gElevatorLevels[type]), sizeof(*gElevatorLevels));
-                            memcpy(&(gElevatorLevelLabels[index]), &(gElevatorLevelLabels[type]), sizeof(*gElevatorLevelLabels));
-                        }
-                    }
-                }
+        if (index >= ELEVATOR_COUNT) {
+            int levels = 0;
+            if (configGetInt(&elevatorsConfig, sectionKey, "ButtonCount", &levels)) {
+                gElevatorLevels[index] = std::clamp(levels, 2, ELEVATOR_LEVEL_MAX);
             }
+        }
 
-            configFree(&elevatorsConfig);
+        configGetInt(&elevatorsConfig, sectionKey, "MainFrm", &(gElevatorBackgrounds[index].backgroundFrmId));
+        configGetInt(&elevatorsConfig, sectionKey, "ButtonsFrm", &(gElevatorBackgrounds[index].panelFrmId));
+
+        for (int level = 0; level < ELEVATOR_LEVEL_MAX; level++) {
+            snprintf(key, sizeof(key), "ID%d", level + 1);
+            configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].map));
+
+            snprintf(key, sizeof(key), "Elevation%d", level + 1);
+            configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].elevation));
+
+            snprintf(key, sizeof(key), "Tile%d", level + 1);
+            configGetInt(&elevatorsConfig, sectionKey, key, &(gElevatorDescriptions[index][level].tile));
         }
     }
+
+    // NOTE: Sfall implementation is slightly different. It uses one
+    // loop and stores `type` value in a separate lookup table. This
+    // value is then used in the certain places to remap from
+    // requested elevator to the new one.
+    for (int index = 0; index < ELEVATORS_MAX; index++) {
+        snprintf(sectionKey, sizeof(sectionKey), "%d", index);
+
+        int type;
+        if (configGetInt(&elevatorsConfig, sectionKey, "Image", &type)) {
+            type = std::clamp(type, 0, ELEVATORS_MAX - 1);
+            if (index != type) {
+                memcpy(&(gElevatorBackgrounds[index]), &(gElevatorBackgrounds[type]), sizeof(*gElevatorBackgrounds));
+                memcpy(&(gElevatorLevels[index]), &(gElevatorLevels[type]), sizeof(*gElevatorLevels));
+                memcpy(&(gElevatorLevelLabels[index]), &(gElevatorLevelLabels[type]), sizeof(*gElevatorLevelLabels));
+            }
+        }
+    }
+
+    configFree(&elevatorsConfig);
 }
 
 } // namespace fallout
