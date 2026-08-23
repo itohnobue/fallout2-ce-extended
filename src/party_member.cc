@@ -872,28 +872,6 @@ int _partyMemberRestingHeal(int hours)
         return 0;
     }
 
-    // FO1 behavior (gFallout1Behavior=true): instant full heal for all
-    // party members, matching FO1's rest mechanics where sleeping
-    // fully restores HP regardless of healing rate.
-    if (gFallout1Behavior) {
-        for (int index = 0; index < gPartyMembersLength; index++) {
-            PartyMemberListItem* partyMember = &(gPartyMembers[index]);
-            if (objectTypeFromPid(partyMember->object->pid) != OBJ_TYPE_CRITTER) continue;
-            // I2-044: Skip dead, hidden, and robot party members during
-            // rest healing, matching partyIsAnyoneCanBeHealedByRest pattern.
-            if (critterIsDead(partyMember->object)) continue;
-            if ((partyMember->object->flags & OBJECT_HIDDEN) != 0) continue;
-            if (critterGetKillType(partyMember->object) == KILL_TYPE_ROBOT) continue;
-
-            int maxHp = critterGetStat(partyMember->object, STAT_MAXIMUM_HIT_POINTS);
-            int currentHp = critterGetStat(partyMember->object, STAT_CURRENT_HIT_POINTS);
-            if (currentHp < maxHp) {
-                critterAdjustHitPoints(partyMember->object, maxHp - currentHp);
-            }
-        }
-        return 1;
-    }
-
     // FO2 default: gradual healing based on healing rate and rest duration.
     int healingTicks = hours / 3;
     if (healingTicks == 0) {
