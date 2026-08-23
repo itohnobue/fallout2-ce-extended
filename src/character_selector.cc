@@ -876,8 +876,6 @@ static bool characterSelectorWindowRenderStats()
     traitsGetSelected(&(traits[0]), &(traits[1]), &(traits[2]));
 
     for (int index = 0; index < traitGetMaxSelectedCount(); index++) {
-        y += vh;
-
         // C-07: traitGetName returns nullptr for invalid trait ids (the -1
         // sentinel slot in FO2 mode, or any out-of-range id from a custom/
         // broken .gcd). strcpy(text, nullptr) is UB — skip the line instead.
@@ -886,8 +884,9 @@ static bool characterSelectorWindowRenderStats()
         if (str == nullptr) {
             continue;
         }
-
         strcpy(text, str);
+
+        y += vh;
 
         length = fontGetStringWidth(text);
         fontDrawText(gCharacterSelectorWindowBuffer + CS_WINDOW_WIDTH * y + CS_WINDOW_SECONDARY_STAT_MID_X - length, text, length, CS_WINDOW_WIDTH, COLOR_GREEN);
