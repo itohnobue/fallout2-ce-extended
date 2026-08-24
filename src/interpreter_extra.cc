@@ -487,16 +487,6 @@ int correctFidForRemovedItem(Object* critter, Object* item, ObjectFlags flags)
     } else {
         if (critter == gDude) {
             newFid = buildFid(objectTypeFromFid(fid), _art_vault_guy_num, animationTypeFromFid(fid), weaponCode, rotationFromFid(fid));
-        } else {
-            // IS-01: for non-dude critters, rebuild the armor-removed fid from
-            // the critter's own base (proto) frame instead of leaving the
-            // removed armor's frame on the sprite.
-            int baseFrmId = fid & 0xFFF;
-            Proto* proto;
-            if (protoGetProto(critter->pid, &proto) != -1) {
-                baseFrmId = proto->fid & 0xFFF;
-            }
-            newFid = buildFid(objectTypeFromFid(fid), baseFrmId, animationTypeFromFid(fid), weaponCode, rotationFromFid(fid));
         }
 
         adjustCritterStatsOnArmorChange(critter, item, nullptr);
@@ -2224,11 +2214,34 @@ static void opMetarule3(Program* program)
             }
             int frmId = param2.integerValue;
 
-            int fid = buildFid(objectTypeFromFid(obj->fid),
-                frmId,
-                animationTypeFromFid(obj->fid),
-                weaponAnimationFromFid(obj->fid),
-                rotationFromFid(obj->fid));
+            // sfall semantics: art_change_fid_num sets the object's art FID
+            // VERBATIM. Callers pass a complete art FID (e.g. 0x01000085),
+            // exactly like reg_anim_change_fid / register_object_change_fid.
+            // For critters we additionally re-apply the animation code of the
+            // weapon actually held in the right hand (if an art with that
+            // combination exists), so companions keep their weapons visually
+            // in hand after an armor-art swap (party-armor mod).
+            int fid = frmId;
+            if (objectTypeFromFid(frmId) == OBJ_TYPE_CRITTER) {
+                WeaponAnimation handWeapon = WEAPON_ANIMATION_NONE;
+                Object* handItem = critterGetItem2(obj);
+                if (handItem != nullptr && itemGetType(handItem) == ITEM_TYPE_WEAPON) {
+                    handWeapon = weaponGetAnimationCode(handItem);
+                    if (weaponAnimationFromFid(frmId) != handWeapon) {
+                        int withWeapon = buildFid(OBJ_TYPE_CRITTER,
+                            frmId & 0xFFF,
+                            animationTypeFromFid(frmId),
+                            handWeapon,
+                            rotationFromFid(frmId));
+                        if (artExists(withWeapon)) {
+                            fid = withWeapon;
+                        }
+                    }
+                }
+                debugPrint("[ART] art_set_base_fid: pid=0x%x passed=0x%08X handItem=0x%x handW=%d artExists(reconciled)=%d final=0x%08X\n",
+                    obj->pid, frmId, handItem ? handItem->pid : 0, handWeapon,
+                    artExists(fid), fid);
+            }
 
             Rect updatedRect;
             objectSetFid(obj, fid, &updatedRect);
@@ -3831,6 +3844,9 @@ static void opAnim(Program* program)
             animationRegisterAnimate(obj, anim, 0);
             if (anim >= ANIM_FALL_BACK && anim <= ANIM_FALL_FRONT_BLOOD) {
                 int fid = buildFid(OBJ_TYPE_CRITTER, obj->fid & 0xFFF, anim + 28, weaponAnimationFromFid(obj->fid), rotationFromFid(obj->fid));
+                if (anim + 28 > ANIM_COUNT) {
+                    debugPrint("[ANIM] opAnimate +28 out of range: pid=0x%x anim=%d fid=0x%08X\n", obj->pid, anim, fid);
+                }
                 animationRegisterSetFid(obj, fid, -1);
             }
 

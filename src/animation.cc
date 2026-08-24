@@ -569,6 +569,14 @@ static int _anim_preload(Object* object, int fid, CacheEntry** cacheEntryPtr)
 {
     *cacheEntryPtr = nullptr;
 
+    if (objectTypeFromFid(object->fid) == OBJ_TYPE_CRITTER) {
+        int a = animationTypeFromFid(fid);
+        if (a > ANIM_COUNT || a < 0) {
+            debugPrint("[ANIM] preload anim=%d (out of range) pid=0x%x fid=0x%08X kind-owner-fid=0x%08X\n",
+                a, object->pid, object->fid, fid);
+        }
+    }
+
     if (artLock(fid, cacheEntryPtr) != nullptr) {
         artUnlock(*cacheEntryPtr);
         *cacheEntryPtr = nullptr;

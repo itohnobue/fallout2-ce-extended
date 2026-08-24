@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-24T03:52:26.130422
+Last updated: 2026-08-24T23:22:28.620604
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -773,17 +773,24 @@ Changed: 2026-08-24T03:52:21.577821
 
 sfall set_rest_mode contract (real sfall.h: RESTMODE_DISABLED=1, STRICT=2, NO_HEALING=4; NO UNTIL_HEALED constant exists). set_rest_mode(0) = RESET (→ engine default -1), NOT disabled. Engine translator sfall_metarules.cc translateSfallRestMode: map 0→default(-1), 1→disabled(0), 2→strict(1), 4→noHealing(2), combos(1|2,2|4,1|4,1|2|4)→disabled(0), unknown→default. Prior 'fix' 7f583564 (UF-H-035) authored the WRONG table (invented UNTIL_HEALED=4; 0→Disabled) causing global rest ban via 99map/LARIPPER.ssl set_rest_mode(0) (enter + map_exit) — repeat regression, third attempt corrected it. CE persists rest mode in saves; sfall resets on reload (documented divergence).
 
-## [got-20260824035223-e2d5ba]
-Category: gotcha
-Tags: fid, armor, inventory, party, gotcha
-Changed: 2026-08-24T03:52:23.971026
-
-Non-dude critter armor FID staleness: inventoryEquipFunc (inventory.cc:3885) refreshes critter->fid ONLY for gDude (animationRegisterSetFid); the non-dude else on armor calls only adjustCritterStatsOnArmorChange → sprite stale until object recreated. Same asymmetry in canonical FO1-CE inventry.cc:2839-2844 (invisible there: no party-equip UI). Fix pattern (verified): after stats call, buildFid(OBJ_TYPE_CRITTER, armorBaseFrmId|protoBaseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation+1) + objectSetFid(critter,fid,&rect) + tileWindowRefreshRect(&rect,0) — set the POST-REMOVAL base from the critter proto base (proto->fid & 0xFFF), never from the removed armor's fid. Missing sites fixed: equip else, unequipLootArmorFunc, barter strip/close, correctFidForRemovedItem (unwield), _obj_remove_from_inven armor case.
-
 ## [got-20260824035226-28de87]
 Category: gotcha
 Tags: healing, fo1, rest, worldmap, gotcha
 Changed: 2026-08-24T03:52:26.127700
 
 FO1-CE rest/travel heal is GRADUAL, not instant: partyMemberRestingHeal=(hours/3)×healingRate (tmp/fo1-ce/src/game/party.cc:438-459); pipboy rest _Check4Health fires after 180 rest-min; worldmap heals per game-day of travel. The fork's gFallout1Behavior instant-full-heal block (party_member.cc:878-895, from f40c9611 '50 verified fixes') deviated from real FO1 — DELETED. Post-fix worldmap heal math: loop fires every >1000 REAL ms while worldmap open (worldmap.cc:4041, not walking-gated, fires on open since partyHealTime=0) with healHours=3 → per-game-hour rate = R/30 HP (game time advances 0.5h/frame at ~60fps). Any new FO1-related gFallout1Behavior consumer must be checked against FO1-CE behavior, not assumptions.
+
+## [got-20260824222708-331c08]
+Category: gotcha
+Tags: fid, armor, party, inventory, sfall, ce
+Changed: 2026-08-24T22:27:08.066519
+
+Non-dude critter armor FID: vanilla/FO1-CE contract = ONLY gDude re-derives armor frames (armorGetMaleFid as critter art). NPC armor change = stats only; NPC armor appearance is script-owned (et tu gl_partyarmor via HOOK_INVENWIELD + metarule3 ART_SET_BASE_FID_NUM=107 art_change_fid_num). NEVER buildFid(CRITTER, armor.maleFid, ...) for non-dudes - maleFid is an art index in critter-art space = unrelated figure (white man). IS-01 9fc66a87 violated this (white-man regression, fixed 2026-08-24). Real stale-sprite root: re-wear paths (critterRestoreEquipped, barter close) never re-fired HOOK_INVENWIELD (wield) after strip fired unwield - script art lost until reload. Hook re-fire (isWield=1) on re-wear = fire-and-continue (restore of pre-vetted gear; -1=engine default=proceed). Check FO1-CE inventry.cc:2839-2844 before touching.
+
+## [got-20260824232228-6e9012]
+Category: gotcha
+Tags: fid, art, sfall, metarule, party, mod
+Changed: 2026-08-24T23:22:28.617708
+
+art_change_fid_num (metarule3 METARULE3_ART_SET_BASE_FID_NUM=107; sfall define_lite macro) = SET FULL FID VERBATIM (semantics of reg_anim_change_fid/register_object_change_fid). CE must NOT rebuild bits from the object's current anim/weapon/rotation: stale weapon bits (e.g. 6) glued onto a new art make artGetFrame file lookup fail (HMMET2IA.FRM missing) -> critter silently invisible/'disappeared'. In CE's interpreter_extra.cc metarule: after setting, reconcile critter weapon bits from critterGetItem2 via weaponGetAnimationCode when artExists(withWeapon) — otherwise reuse bits. Note: art columns are per-art pack: HMMET2 (Default) has NO weapon-6 ('I') column, HMBLTR (Leather) does; et-tu 14mm pid 0x16=22 = anim code 6 = SMG column by author convention; Vasques WeaponAnims=5 (pistol only) by design -> mod vetoes his stock 14mm (owner decision: keep as mod ground truth).
 

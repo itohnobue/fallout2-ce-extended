@@ -10,8 +10,15 @@ for the full investigation trail of each).
 
 ## Open issues
 
-_None currently open. New reports: capture in this file with root-cause hypotheses and
-next steps as they emerge._
+### Mod-side note — Vasques is pistol-only by design; his stock 14mm is vetoed
+
+et tu `gl_partyarmor` (`config\party_armor.ini`, Vasques `WeaponAnims=5`) refuses
+weapons whose anim code is not in the list. The 14mm pistol (pid 0x16=22) carries
+anim code **6** (SMG column per the author's art convention — engine and mod read
+the same proto field and agree). Under the mod's own rules his stock 14mm is
+unusable → he runs empty-handed and "use best weapon" yields None. **Intentional
+per owner decision (pistol-only); the mod's INI is the ground truth — not engine
+code, not fixed.** Ian/Tycho/Katja lists include 6 → unaffected.
 
 ---
 

@@ -444,6 +444,11 @@ int objectRead(Object* obj, File* stream)
     if (fileReadUInt32Enum<ObjectFlags>(stream, &(obj->flags)) == -1) return -1;
     if (fileReadInt32(stream, &(obj->elevation)) == -1) return -1;
     if (fileReadInt32(stream, &(obj->pid)) == -1) return -1;
+    if (objectTypeFromFid(obj->fid) == OBJ_TYPE_CRITTER) {
+        debugPrint("[OBJ] load critter pid=0x%x fid=0x%08X rotField=%d anim=%d weapon=%d\n",
+            obj->pid, obj->fid, obj->rotation,
+            animationTypeFromFid(obj->fid), weaponAnimationFromFid(obj->fid));
+    }
     if (fileReadInt32(stream, &(obj->cid)) == -1) return -1;
     if (fileReadInt32(stream, &(obj->lightDistance)) == -1) return -1;
     if (fileReadInt32(stream, &(obj->lightIntensity)) == -1) return -1;
@@ -5055,7 +5060,17 @@ static void _obj_render_object(Object* object, Rect* rect, int light)
     CacheEntry* cacheEntry;
     Art* art = artLock(object->fid, &cacheEntry);
     if (art == nullptr) {
+        if (type == OBJ_TYPE_CRITTER) {
+            debugPrint("[ART] render critter: artLock null fid=0x%08X pid=0x%x rotField=%d anim=%d weapon=%d\n",
+                object->fid, object->pid, object->rotation,
+                animationTypeFromFid(object->fid), weaponAnimationFromFid(object->fid));
+        }
         return;
+    }
+
+    if (type == OBJ_TYPE_CRITTER && !rotationIsValid(object->rotation)) {
+        debugPrint("[ART] render critter: INVALID rotation field %d pid=0x%x fid=0x%08X\n",
+            object->rotation, object->pid, object->fid);
     }
 
     int frameWidth = artGetWidth(art, object->frame, object->rotation);

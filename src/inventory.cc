@@ -1346,19 +1346,6 @@ static int unequipLootArmorFunc(Object* critter)
 
     armor->flags &= ~OBJECT_WORN;
     adjustCritterStatsOnArmorChange(critter, armor, nullptr);
-
-    // IS-01: refresh the on-map sprite after removing a non-dude party
-    // member's armor so the companion no longer shows the removed armor's
-    // frame. The post-removal frame is the critter's own base (proto) frame.
-    int baseFrmId = critter->fid & 0xFFF;
-    Proto* proto;
-    if (protoGetProto(critter->pid, &proto) != -1) {
-        baseFrmId = proto->fid & 0xFFF;
-    }
-    int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation + 1);
-    Rect rect;
-    objectSetFid(critter, fid, &rect);
-    tileWindowRefreshRect(&rect, critter->elevation);
     return 0;
 }
 
@@ -3394,17 +3381,33 @@ CritterEquipped critterStripEquipped(Object* critter)
 
 void critterRestoreEquipped(Object* critter, CritterEquipped& equipped)
 {
+    // Restore previously-worn gear. The invenwield (wield) hook must run on
+    // every re-wear so script appearance mods (gl_partyarmor) re-apply the
+    // correct art. Note: the strip path (critterStripEquipped) does NOT fire
+    // the invenwield unwield hook — itemRemoveWithReason only fires
+    // scriptHooks_RemoveInventoryObject, and the unwield hook in
+    // _obj_remove_from_inven is reached only via objectDrop/objectDestroy
+    // (other unwield hook sites: itemDropAll, correctFidForRemovedItem). The
+    // mod's armored art therefore persists through the strip; the re-wear
+    // hook below re-applies the art per restored gear (weapon before armor),
+    // and base-art restoration happens on the explicit unequip paths
+    // (unequipLootArmorFunc, objectDrop).
+    // Fire-and-continue: this restores previously-worn gear, so a script
+    // veto is not actionable here.
     if (equipped.leftHand != nullptr) {
         equipped.leftHand->flags |= OBJECT_IN_LEFT_HAND;
         if (equipped.leftHand == equipped.rightHand) equipped.leftHand->flags |= OBJECT_IN_RIGHT_HAND;
+        scriptHooks_InvenWield(critter, equipped.leftHand, InvenSlot::LeftHand, 1, 0);
         itemAdd(critter, equipped.leftHand, 1);
     }
     if (equipped.rightHand != nullptr && equipped.rightHand != equipped.leftHand) {
         equipped.rightHand->flags |= OBJECT_IN_RIGHT_HAND;
+        scriptHooks_InvenWield(critter, equipped.rightHand, InvenSlot::RightHand, 1, 0);
         itemAdd(critter, equipped.rightHand, 1);
     }
     if (equipped.armor != nullptr) {
         equipped.armor->flags |= OBJECT_WORN;
+        scriptHooks_InvenWield(critter, equipped.armor, InvenSlot::Armor, 1, 0);
         itemAdd(critter, equipped.armor, 1);
     }
     equipped = {};
@@ -3937,15 +3940,14 @@ int inventoryEquipFunc(Object* critter, Object* item, Hand handIndex, bool anima
                 animationRegisterSetFid(critter, fid, 0);
             }
         } else {
+            // Vanilla / FO1-CE contract: only gDude's sprite reflects the
+            // armor frame. Non-dude critters keep their own critter art —
+            // armor appearance is owned by scripts (e.g. et tu's
+            // gl_partyarmor INT via HOOK_INVENWIELD / art_change_fid_num).
+            // The invenwield hook above has already run, so any script
+            // appearance update is applied; do NOT re-derive a dude-style
+            // armor frame for NPCs (see 9fc66a87 regression).
             adjustCritterStatsOnArmorChange(critter, armor, item);
-            // IS-01: refresh the on-map sprite for non-dude party members so
-            // armor equips apply immediately. Mirrors the gDude branch above
-            // and the weapon branch below, both of which refresh the fid but
-            // which the armor branch lacked for non-dude critters.
-            int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(critter->fid), critter->rotation + 1);
-            Rect rect;
-            objectSetFid(critter, fid, &rect);
-            tileWindowRefreshRect(&rect, critter->elevation);
         }
     } else {
         Hand hand;
@@ -5915,19 +5917,14 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
 
     Object* armor = critterGetArmor(barterer);
     if (armor != nullptr) {
+        // Vanilla contract: barterer sprites do not derive armor frames at
+        // engine level. The barter-open strip does NOT fire the invenwield
+        // (unwield) hook — itemRemoveWithReason only fires
+        // scriptHooks_RemoveInventoryObject — so the mod's art persists into
+        // the trade; the closed → re-wear hook below re-applies it per
+        // restored gear (weapon re-added before armor, as in
+        // critterRestoreEquipped).
         itemRemoveWithReason(barterer, armor, 1, RemoveInventoryObjectHookReason::BarterArmor);
-
-        // IS-01: refresh the barterer's sprite after stripping its armor for
-        // the trade so the sprite no longer shows the removed armor's frame.
-        int baseFrmId = barterer->fid & 0xFFF;
-        Proto* proto;
-        if (protoGetProto(barterer->pid, &proto) != -1) {
-            baseFrmId = proto->fid & 0xFFF;
-        }
-        int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(barterer->fid), barterer->rotation + 1);
-        Rect rect;
-        objectSetFid(barterer, fid, &rect);
-        tileWindowRefreshRect(&rect, barterer->elevation);
     }
 
     Object* item1 = nullptr;
@@ -6253,45 +6250,28 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
     debugPrint("[BARTER] exit loop: keyCode=%d playerTable=%d items bartererTable=%d items\n",
         keyCode, playerTable->data.inventory.length, bartererTable->data.inventory.length);
 
-    if (armor != nullptr) {
-        armor->flags |= OBJECT_WORN;
-        itemAdd(barterer, armor, 1);
-    }
-
     if (item2 != nullptr) {
         item2->flags |= OBJECT_IN_RIGHT_HAND;
+        scriptHooks_InvenWield(barterer, item2, InvenSlot::RightHand, 1, 0);
         itemAdd(barterer, item2, 1);
+    }
+
+    if (armor != nullptr) {
+        armor->flags |= OBJECT_WORN;
+        // Re-wear of the barterer's armor must re-fire invenwield (wield) so
+        // script appearance mods (gl_partyarmor) re-apply the armored art.
+        // The right-hand weapon is re-added first (above) so it is in hand at
+        // armor-hook time — the engine's art_change_fid_num reconcile reads
+        // critterGetItem2 and can keep the held-weapon anim code.
+        // Fire-and-continue: this restores previously-worn gear, so a script
+        // veto is not actionable here (vanilla FO1-CE semantics).
+        scriptHooks_InvenWield(barterer, armor, InvenSlot::Armor, 1, 0);
+        itemAdd(barterer, armor, 1);
     }
 
     if (item1 != nullptr) {
         itemAdd(barterer, item1, 1);
     }
-
-    // IS-01: refresh the barterer's sprite to the actual post-barter armor
-    // state (armored frame if armor is worn again, otherwise the base frame).
-    // Handles both the sold-armor case (armor not restored -> base frame) and
-    // the retained-armor case (armor re-worn -> armored frame).
-    int baseFrmId = barterer->fid & 0xFFF;
-    Object* wornArmor = critterGetArmor(barterer);
-    if (wornArmor != nullptr) {
-        if (critterGetStat(barterer, STAT_GENDER) == GENDER_FEMALE) {
-            baseFrmId = armorGetFemaleFid(wornArmor);
-        } else {
-            baseFrmId = armorGetMaleFid(wornArmor);
-        }
-        if (baseFrmId == -1) {
-            baseFrmId = 1;
-        }
-    } else {
-        Proto* proto;
-        if (protoGetProto(barterer->pid, &proto) != -1) {
-            baseFrmId = proto->fid & 0xFFF;
-        }
-    }
-    int fid = buildFid(OBJ_TYPE_CRITTER, baseFrmId, ANIM_STAND, weaponAnimationFromFid(barterer->fid), barterer->rotation + 1);
-    Rect rect;
-    objectSetFid(barterer, fid, &rect);
-    tileWindowRefreshRect(&rect, barterer->elevation);
 
     gInventoryWindowDudeFid = savedDudeFid;
     _exit_inventory(isoWasEnabled);

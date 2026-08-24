@@ -676,27 +676,23 @@ static int _obj_remove_from_inven(Object* critter, Object* item)
                 appearanceUpdateType = 1;
             }
         } else if (slot == InvenSlot::Armor) {
-            int armorBaseFid;
+            // FO1-CE / vanilla contract: only gDude's sprite re-derives from
+            // an armor frame / vault-guy base art. Non-dude critters keep
+            // their own critter art; the invenwield (unwield) hook fired
+            // above lets script appearance mods (gl_partyarmor) apply the
+            // base art, exactly like FO1-CE inven_wield.
             if (critter == gDude) {
-                armorBaseFid = 1;
+                int defaultFid = 1;
 
                 Proto* proto;
                 if (protoGetProto(0x1000000, &proto) != -1) {
-                    armorBaseFid = proto->fid;
+                    defaultFid = proto->fid;
                 }
-            } else {
-                // IS-01: for non-dude critters, rebuild the armor-removed fid
-                // from the critter's own base (proto) frame.
-                armorBaseFid = critter->fid & 0xFFF;
-                Proto* proto;
-                if (protoGetProto(critter->pid, &proto) != -1) {
-                    armorBaseFid = proto->fid & 0xFFF;
-                }
-            }
 
-            fid = buildFid(OBJ_TYPE_CRITTER, armorBaseFid, animationTypeFromFid(critter->fid), weaponAnimationFromFid(critter->fid), critter->rotation);
-            objectSetFid(critter, fid, &updatedRect);
-            appearanceUpdateType = 3;
+                fid = buildFid(OBJ_TYPE_CRITTER, defaultFid, animationTypeFromFid(critter->fid), weaponAnimationFromFid(critter->fid), critter->rotation);
+                objectSetFid(critter, fid, &updatedRect);
+                appearanceUpdateType = 3;
+            }
         }
     }
 
