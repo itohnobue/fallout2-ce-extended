@@ -8,9 +8,7 @@ Heavily upgraded fork of native-source Fallout 2 CE engine which is fully compat
 
 [**Download the latest build DMG (macOS ARM64)**](release/Fallout-II-Community-Edition.dmg)
 
-The file lives in the repo's `release/` folder and is refreshed on every build
-release — the link always points to the newest engine build. Prefer the app bundle
-instead? [release/Fallout-II-Community-Edition.app.zip](release/Fallout-II-Community-Edition.app.zip)
+Build is fully signed and notarized by Apple.
 
 ## Current status
 
