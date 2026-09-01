@@ -101,3 +101,8 @@ smoke/
 
 # Local GOG installers
 install/
+
+# Release artifacts (Latest build snapshot) are intentionally committed
+!release/
+!release/**
+!release/*.dmg
