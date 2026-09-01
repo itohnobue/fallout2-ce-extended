@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-08-24T23:22:28.620604
+Last updated: 2026-09-01T20:19:16.120184
 
 ## [dis-20260704144725-9b3649]
 Category: discovery
@@ -680,7 +680,7 @@ Category: discovery
 Tags: et-tu, rendering, walls, shady-sands
 Changed: 2026-08-19T22:41:59.475548
 
-Et Tu Shady Sands 'striped homes': FO1 adobe walls = 16px/32px-wide FRM pieces at every other tile with 1x1 block.frm markers, two interleaved rows. Engine placement math (identical FO1/FO2) leaves 8px vertical slits every 48px at scale 1 (16px at scale 2) — slits are IN THE DATA, rendered faithfully by any engine. All 94 wall FRMs byte-identical to FO1 MASTER.DAT, size==w*h (no RLE). See KNOWN_ISSUES.md Issue A.
+Et Tu Shady Sands 'striped homes': FO1 adobe walls = 16px/32px-wide FRM pieces at every other tile with 1x1 block.frm markers, two interleaved rows. Engine placement math (identical FO1/FO2) leaves 8px vertical slits every 48px at scale 1 (16px at scale 2) — slits are IN THE DATA, rendered faithfully by any engine. All 94 wall FRMs byte-identical to FO1 MASTER.DAT, size==w*h (no RLE). (Closed as data-faithful; see git log c8f927ff.)
 
 ## [got-20260819224159-59695c]
 Category: gotcha
@@ -793,4 +793,18 @@ Tags: fid, art, sfall, metarule, party, mod
 Changed: 2026-08-24T23:22:28.617708
 
 art_change_fid_num (metarule3 METARULE3_ART_SET_BASE_FID_NUM=107; sfall define_lite macro) = SET FULL FID VERBATIM (semantics of reg_anim_change_fid/register_object_change_fid). CE must NOT rebuild bits from the object's current anim/weapon/rotation: stale weapon bits (e.g. 6) glued onto a new art make artGetFrame file lookup fail (HMMET2IA.FRM missing) -> critter silently invisible/'disappeared'. In CE's interpreter_extra.cc metarule: after setting, reconcile critter weapon bits from critterGetItem2 via weaponGetAnimationCode when artExists(withWeapon) — otherwise reuse bits. Note: art columns are per-art pack: HMMET2 (Default) has NO weapon-6 ('I') column, HMBLTR (Leather) does; et-tu 14mm pid 0x16=22 = anim code 6 = SMG column by author convention; Vasques WeaponAnims=5 (pistol only) by design -> mod vetoes his stock 14mm (owner decision: keep as mod ground truth).
+
+## [got-20260901201916-6d2a58]
+Category: gotcha
+Tags: github, release
+Changed: 2026-09-01T20:19:16.035163
+
+GitHub asset upload quirks: on itohnobue account the uploads host sanitizes SPACES to DOTS in release asset names (rename via PATCH keeps dots; hyphenated names avoid it). Asset uploads must go to uploads.github.com with a browser User-Agent (api.github.com host returns 404).
+
+## [got-20260901201916-f3bcb8]
+Category: gotcha
+Tags: macos, signing, release
+Changed: 2026-09-01T20:19:16.117284
+
+macOS signing/release: Developer ID Application .cer from portal has NO private key (usable for nothing alone); must pair with the CSR keypair used at creation (openssl pkcs12 -export then security import -T /usr/bin/codesign). notarytool submit --wait --apple-id --team-id --password works from CLI; staple after. App must be re-signed with Developer ID for the ENTIRE bundle incl nested executable before notarization. ditto realpath errors were transient/flaky in this env (retry works).
 
