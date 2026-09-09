@@ -66,6 +66,9 @@ CLAUDE.md
 GEMINI.md
 opencode.json
 session.md
+
+# CodeGraph local code index (generated per machine; methodology: docs/codegraph-methodology.md)
+.codegraph/
 MEMORY.md
 loop-tasks.txt
 loop-tasks-run.sh
