@@ -1,33 +1,12 @@
 # Knowledge Base
-Last updated: 2026-09-01T20:19:16.120184
-
-## [dis-20260704144725-9b3649]
-Category: discovery
-Tags: f1et, save-format, config, proto
-Changed: 2026-07-04T14:47:25.848405
-
-Config & Save audit: save format uses fixed 131B header + 27 sequential handler chunks, no version enforcement (only signature check). Save files do NOT serialize proto structs — only runtime object state (hp, ammo, etc.), so FO2 proto size differences don't affect save compatibility. Config system is fully extensible; existing f1_res.ini pattern can be replicated for fo1_settings.ini and ddraw.ini. Critical issues: LOAD_SAVE_HANDLER_COUNT=27 is a hardcoded positional chain, adding handlers breaks old-load-new or new-load-old. Version check is decorative — SLOT_STATE_UNSUPPORTED_VERSION is unreachable. See tmp/s2i1-d1b-config-report.md for full analysis.
-
-## [con-20260704193654-b49a87]
-Category: context
-Tags: fallout2-ce, plan, completed
-Changed: 2026-07-04T19:36:54.836646
-
-Fallout 2 CE fork plan completed: tmp/fallout2-ce-fork-plan.md (1,856 lines). Base fork = fallout2-ce/fallout2-ce org fork. Et Tu + RPU compatible. 3 convergence iterations, 71 findings, 67 fixed. 6 unique review specialists used (code-reviewer, cpp-pro, backend-architect, build-engineer, research-analyst, security-reviewer).
-
-## [got-20260704221900-f633b8]
-Category: gotcha
-Tags: fallout2-ce, interpreter, bugs
-Changed: 2026-07-04T22:19:00.645953
-
-fallout2-ce interpreter.cc is the bug hotspot — 12 confirmed MEDIUM+ findings in 3,461 LOC. Key patterns: missing bounds checks on bytecode/procedure indices, programFatalError called without setjmp context (UB), opModulo/opSubtract/opMultiply/opDivide all share silent stack imbalance for non-numeric types.
+Last updated: 2026-10-04T20:18:28.462101
 
 ## [pat-20260704221900-debed7]
 Category: pattern
 Tags: fallout2-ce, hooks, pattern
-Changed: 2026-07-04T22:19:00.720561
+Changed: 2026-07-05T01:11:27.626093
 
-fallout2-ce hook registration pattern: define enum in sfall_script_hooks.h, implement register+fire functions in sfall_script_hooks.cc, call from engine code (object.cc/light.cc/interface.cc). ScriptHookCall constructor takes (hookId, maxReturnValues, {args}). maxReturnValues=0 = observe-only, >0 = script can override via ret values.
+fallout2-ce hook registration pattern: define enum in sfall_script_hooks.h, implement register+fire functions in sfall_script_hooks.cc, call from engine code (object.cc/light.cc/interface.cc). ScriptHookCall constructor takes (hookId, maxReturnValues, {args}); maxReturnValues=0 = observe-only, >0 = script can override via ret values. register_hook_proc and register_hook_proc_spec have SEPARATE handlers (F-15); sfall 4.2+ semantics = register_hook_proc adds to the BEGINNING, register_hook_proc_spec to the END (CE matches sfall 'BackwardHooksRegistration'); mods depending on execution order break silently if the order differs.
 
 ## [dis-20260704221900-a1b096]
 Category: discovery
@@ -38,10 +17,10 @@ fallout2-ce opcode dispatch architecture: map-based registration with opcode & 0
 
 ## [ent-20260704235834-2f23d4]
 Category: entity
-Tags: fallout2-ce, repository, forgejo
+Tags: fallout2-ce, repository, forgejo, github
 Changed: 2026-07-04T23:58:34.318315
 
-fallout2-ce-extended repo: new Forgejo repo at git.aoizora.ru/nobu/fallout2-ce-extended (public). Local: ~/Git/fallout2-ce-extended. Remote: ssh://git@git.aoizora.ru:2222/nobu/fallout2-ce-extended.git. Contains all Session 1+2 work (sfall 4.4.9, 10 hooks, 32+ bug fixes, SpeedMulti, test framework, Emscripten preset). Future work goes here, not the original fallout2-ce repo.
+fallout2-ce-extended repo: origin = Forgejo/Gitea at git.aoizora.ru/nobu/fallout2-ce-extended (ssh://git@git.aoizora.ru:2222/nobu/fallout2-ce-extended.git, public); upstream = github.com/fallout2-ce/fallout2-ce (the FO:CE org fork). Local checkout: ~/Git/fallout2-ce-extended. This is the fork's home for engine work (sfall, hooks, bug fixes, SpeedMulti, test framework, Emscripten preset); future work goes here, not the original fallout-ce repo. Releases are published via the update-latest-release skill (GitHub rolling release + committed release/ folder).
 
 ## [dis-20260705011122-e81b5f]
 Category: discovery
@@ -49,34 +28,6 @@ Tags: sfall, compatibility, ception, corrected
 Changed: 2026-07-05T01:11:22.081688
 
 CRITICAL TABLE CORRECTION: get/set/reset_critical_table (0x81E1-0x81E3) ARE fully implemented in CE at sfall_opcodes.cc:459-501,2090-2095. test_criticals.cc passes. Research reports incorrectly flagged as NOT IMPLEMENTED. Et Tu's OverrideCriticalTable=3 IS supported.
-
-## [got-20260705011127-cf46c9]
-Category: gotcha
-Tags: sfall, hooks, compatibility, bug
-Changed: 2026-07-05T01:11:27.626093
-
-register_hook_proc vs register_hook_proc_spec: CE maps BOTH to same handler at sfall_opcodes.cc:2341, both add to END via scriptHooksRegister at sfall_script_hooks.cc:146 (emplace at begin, reverse iterate = end). sfall 4.2+: register_hook_proc adds to BEGINNING, register_hook_proc_spec to END. CE behavior matches sfall 'BackwardHooksRegistration' mode. Mods depending on execution order break silently.
-
-## [pat-20260705011129-fd1230]
-Category: pattern
-Tags: sfall, hooks, bug, keypress
-Changed: 2026-07-05T01:11:29.136175
-
-HOOK_KEYPRESS at sfall_kb_helpers.cc:371 passes hardcoded 0 for arg3 (VK code). sfall uses this for distinguishing left/right shift. TODO comment says 'not sure any mod actually used it' but RPU Party Orders depends on keyboard shortcut distinction.
-
-## [dis-20260705064730-b61619]
-Category: discovery
-Tags: sfall_opcodes, rpu, completed
-Changed: 2026-07-05T06:47:30.595064
-
-F-01 VFS: Full implementation of 18 file ops (fs_create/copy/find/read/write/seek/size/pos/delete/resize) using FILE* handle table in sfall_opcodes.cc. F-02 NPC/Hero: 5 stubs (inc/get_npc_level, set_dm/df_model, hero_select_win). F-08 available_global_script_types returns 0xF bitmask. F-14 get_sfall_global_float int-backed cast. F-11 reg_anim_callback stores callback (not invoked without sfall_animation.cc changes). F-15 register_hook_proc_spec separate handler. F-16 ITEM_TYPE_AMMO guard on set_weapon_ammo_pid. F-34 version bumped to 4.5.1. F-68 negative offset guard in proto_data ops. F-71 fallback push(0) in op_get_array else branch. F-79 critter type checks on 4 stat handlers. F-29 all Object* sites verified consistent.
-
-## [arc-20260705075444-fd6f6a]
-Category: architecture
-Tags: fallout2-ce, sfall, production-check, rpu, ettu
-Changed: 2026-07-05T07:54:44.366085
-
-fallout2-ce-extended production check: 78 original findings + 19 review findings fixed across 27 files. VFS (fs_create/fs_copy w+b mode), interpreter bounds checks, script dialog capacity, global script early-return paths, INI snprintf guards, config fprintf checks, hook DescriptionObj string resolution, inventory explosive check. Build: macOS ARM Debug passes, 5/5 tests pass.
 
 ## [arc-20260705163503-a8427b]
 Category: architecture
@@ -92,8 +43,6 @@ Changed: 2026-07-05T20:34:14.759904
 
 fallout2-ce-extended: STAT_SNEAK is not a valid constant in the codebase. Use skillGetValue(gDude, SKILL_SNEAK) from skill_defs.h instead.
 
-to sfallOpcodesReset() for any dynamically allocated state.
-
 ## [dis-20260705221054-6d4639]
 Category: discovery
 Tags: fallout2-ce, rpu, et-tu, sfall
@@ -103,31 +52,17 @@ fallout2-ce-extended: RPU v34 has 1518 .int files, et tu v1.16.3771 has 1049 .in
 
 ## [got-20260705221100-205ec6]
 Category: gotcha
-Tags: fallout2-ce, stat, sfall
-Changed: 2026-07-05T22:11:00.176451
+Tags: fallout2-ce, sfall, stat, perk
+Changed: 2026-07-07T21:55:18.911594
 
-fallout2-ce-extended: gStatDescriptions[] in stat.cc is file-static — no getter functions (statGetMaxValue/statGetMinValue) exist. Only setters (statSetMaxValue/statSetMinValue) are in stat.h. To return correct stat limits from sfall metarules, a kDefaultStatLimits lookup table mirroring the initializer values is used as a workaround.
-
-## [dis-20260706093444-0cdecc]
-Category: discovery
-Tags: tests, coverage, quality, sfall, ce-extended
-Changed: 2026-07-06T09:34:44.371430
-
-E-Test Suite Quality Audit completed: 45 test files (~42K LOC) analyzed. 2 CRITICAL (7 TODO placeholders with CHECK(true), knockback opcodes untested), 5 HIGH (mirror test fallacy, VFS fs_resize mode mismatch, 150 file-static opcodes untestable, worldmap subtile skip, broken code test), 9 MEDIUM, 4 LOW findings. Key gaps: skill opcodes 0% coverage, combat advanced 0%, lock/event/utility opcodes 0%. 38/45 tests are self-contained mirrors that don't test production code.
+Engine description/limit tables are file-static (internal linkage) with no public getters: gStatDescriptions[] in stat.cc (only statSetMaxValue/statSetMinValue setters exist; a kDefaultStatLimits mirror table is used for sfall metarule limits) and gPerkDescriptions in perk.cc (use perkSetMinLevel/perkGetMinLevel from perk.h). To expose such data, add accessors in the .h or mirror the initializer values.
 
 ## [dis-20260706142125-67fd68]
 Category: discovery
 Tags: fallout2-ce, rpu, etu, compatibility
 Changed: 2026-07-06T14:21:25.016809
 
-fallout2-ce-extended: RPU is 100% compatible (zero gaps). Et Tu requires gFallout1Behavior flag for FO1-mode behavior gating across combat, encounters, rest, reactions, worldmap. 28 fixes implemented across 17 files. Build: cmake -S . -B out/build/test -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_OSX_ARCHITECTURES=arm64. Tests: 43/43 pass.
-
-## [pat-20260706142125-99c5dc]
-Category: pattern
-Tags: fallout2-ce, voodoo, sfall, architecture
-Changed: 2026-07-06T14:21:25.090015
-
-fallout2-ce-extended: VOODOO memory patches from sfall can't use raw memory writes in CE (different address space). Must implement as native CE config-driven behavior using gFallout1Behavior flag.
+RPU compatibility is complete (zero gaps). Et Tu requires the gFallout1Behavior flag for FO1-mode behavior gating across combat, encounters, rest, reactions, and worldmap (implemented across ~17 files). Scope decision 2026-08-17: goal is 100% RPU + et tu support, not 100% sfall support.
 
 ## [got-20260706142125-5f007b]
 Category: gotcha
@@ -135,13 +70,6 @@ Tags: fallout2-ce, sfall, timer, sid
 Changed: 2026-07-06T14:21:25.160790
 
 fallout2-ce-extended: Program struct has no 'sid' member. To get SID from Program*, must traverse global scripts list. scriptAddTimerEvent stores param as data arg, not opcode. PendingTimerEvent needs timerId field for per-event removal.
-
-## [dis-20260706153805-923a05]
-Category: discovery
-Tags: fallout2, sfall, rpu, etu, compat, research
-Changed: 2026-07-06T15:38:05.760661
-
-fallout2-ce-extended RPU/etu compat: research identified ~50 gaps. CRITICAL: (1) RPU gl_k_modini.ssl BLOCKS on WorldMapSlots=21 + BoostScriptDialogLimit=1 INI validation — CE status unknown, must return expected values; (2) gEnableHeroAppearanceMod/gExtraSaveSlots/gAllowUnsafeScripting/gUseFileSystemOverride are PARSED but UNWIRED in sfall_config.h (et tu needs them); (3) HOOK_COMBATTURN claimed ✅ but must verify it fires (et tu autodoors + destroy_armor depend on it); (4) add_trait engine display integration partial; (5) ~18 storage-only sfall opcodes (knockback, drugs, spray, skill mods, pickpocket mods, hp_per_level, pipboy_available, car_intface_art) values stored but engine never reads them; (6) FO1-specific config (StartingMap, StartXPos/YPos, WorldMapDelay2, XPTable, Movie1-17, DamageFormula, SkillsFile, PerksFile) not parsed by CE; (7) SFALL_COMPATIBILITY.md has 8 outdated entries (set_perk_level done, unjam_lock done, add_g_timer_event/remove_timer_event/create_spatial done, set_quest_failure_value done). RPU uses hooks 5/8/18/30 (all ✅). et tu uses 22 hooks (mostly ✅, 1 needs verify). Full reports: tmp/s1-research-{rpu,etu,sfall}-report.md
 
 ## [ref-20260706183422-02b473]
 Category: reference
@@ -152,59 +80,24 @@ Et Tu mod GitHub: github.com/rotators/Fo1in2. Uses sfall 4.5 with Rotators fork 
 
 ## [got-20260706200521-0f6794]
 Category: gotcha
-Tags: sfall, dialog, compatibility, crash
-Changed: 2026-07-06T20:05:21.011332
-
-Domain F4: opSayMessage (0x8054) causes fatal error — dialogMessage() always returns -1, triggering programFatalError at interpreter_lib.cc:1047. Vanilla dialog opcodes (say_message, say_end, say_option) are landmines on CE. RPU/Et Tu use sfall metarules instead but any mod script calling vanilla opcodes will crash.
-
-## [got-20260706200522-f03187]
-Category: gotcha
-Tags: sfall, interface, save-load, stale-handle
-Changed: 2026-07-06T20:05:22.887952
-
-Domain F4: Interface overlay (gInterfaceOverlayState) saves/restores windowHandle across save/load. Windows are transient (destroyed on map exit). After load, active=true with stale handle — phantom overlay that can't render. Affects Et Tu fo1_interface mod.
-
-## [got-20260706200525-e95408]
-Category: gotcha
-Tags: sfall, message-box, save-load, scripts-disable
+Tags: sfall, interface, save-load, dialog, stale-handle
 Changed: 2026-07-06T20:05:25.215162
 
-Domain F4: message_box mf_message_box saves dialogShowCount > 0 if saved while dialog is showing. On load, counter is non-zero but scripts are (or will be) enabled. Next message_box call increments to 2, decrements to 1, never reaches 0, so scriptsEnable() never called — scripts permanently disabled.
-
-## [got-20260706235949-33ba1a]
-Category: gotcha
-Tags: fallout2-ce, macos, codesign, dmg, cmake
-Changed: 2026-07-06T23:59:49.288031
-
-fallout2-ce-extended macOS DMG signing: CPack 'cmake --build --target package' (DragNDrop generator) with Xcode generator RE-SIGNS the .app ad-hoc ('Sign to Run Locally') during packaging, DESTROYING any prior codesign signature. Fix: use manual 'hdiutil create -srcfolder <staging_with_signed_app> -format UDZO' instead — cp -R preserves the signed bundle, hdiutil packages it without re-signing. Discovered at TEST stage; CPack approach looked sufficient in research but fails in practice with Xcode generator.
-
-## [got-20260707035756-0ff8ef]
-Category: gotcha
-Tags: buffer-overflow, COMPAT_MAX_PATH, fallout2
-Changed: 2026-07-07T03:57:56.799778
-
-Fallout2 CE: compat_makepath() pointer-arithmetic bugs at platform_compat.cc:168,189,196,206 — path++ can escape COMPAT_MAX_PATH buffer boundary, strchr() reads OOB. remaining calc is defeated.
-
-## [arc-20260707035758-6c7f04]
-Category: architecture
-Tags: fallout2, path-handling, hardening
-Changed: 2026-07-07T03:57:58.159931
-
-Fallout2 CE: 115+ COMPAT_MAX_PATH (260-byte) stack buffers across ~50 src/ files. compat_makepath/splitpath are the path assembly API. 3 compat_makepath calls in xlistEnumerate() are the crash trigger. compiler hardening: NO -fstack-protector, NO _FORTIFY_SOURCE in release.
+Domain F4 save/load landmines (sfall interface/message/dialog): (1) opSayMessage (0x8054) causes a fatal error -- dialogMessage() always returns -1, triggering programFatalError at interpreter_lib.cc:1047; vanilla dialog opcodes (say_message, say_end, say_option) are landmines on CE (RPU/Et Tu use sfall metarules instead; any mod script calling the vanilla opcodes crashes). (2) Interface overlay (gInterfaceOverlayState) saves/restores windowHandle across save/load, but windows are transient (destroyed on map exit) -- after load, active=true with a stale handle = phantom overlay that can't render (affects Et Tu fo1_interface). (3) message_box mf_message_box saves dialogShowCount>0 if saved mid-dialog; on load the counter is non-zero but scripts are enabled, the next call increments to 2 then decrements to 1, never reaches 0, so scriptsEnable() is never called -- scripts permanently disabled.
 
 ## [dis-20260707035800-0bb9e0]
 Category: discovery
-Tags: fallout2, security-audit, CWE-121
+Tags: fallout2, security, path-handling, hardening, CWE-121
 Changed: 2026-07-07T03:58:00.117822
 
-Fallout2 CE security audit: 1 CRITICAL (F-01: compat_makepath stack overflow, CWE-121), 3 HIGH (F-02: path past buffer via path++, F-03: unbounded strcpy xfile.cc:761, F-04: unbounded strcpy dfile path xfile.cc:655), 3 MEDIUM, 2 LOW. Fix ranked: Phase1=fixed compat_makepath, Phase2=compiler flags, Phase3=snprintf, Phase4=std::filesystem
+Fallout2 CE path-handling security audit: compat_makepath() has pointer-arithmetic bugs at platform_compat.cc:168,189,196,206 -- path++ can escape the COMPAT_MAX_PATH (260-byte) buffer and strchr() reads OOB (CWE-121 stack overflow; F-01 CRITICAL). There are 115+ COMPAT_MAX_PATH stack buffers across ~50 src/ files; compat_makepath/splitpath are the path-assembly API, and 3 calls in xlistEnumerate() are the crash trigger. Also unbounded strcpy at xfile.cc:761 (F-03) and xfile.cc:655 (F-04). Release builds had NO -fstack-protector / _FORTIFY_SOURCE. Fix ranking: Phase1 compat_makepath, Phase2 compiler flags, Phase3 snprintf, Phase4 std::filesystem.
 
 ## [got-20260707090024-0928cf]
 Category: gotcha
-Tags: et-tu, fo1, voodoo, sfall
+Tags: sfall, voodoo, et-tu, fallout2-ce
 Changed: 2026-07-07T09:00:24.311563
 
-VOODOO memory patches (write_byte/write_int at 0x4244ED,0x4A29F5,0x499746,0x444D10,0x4C0B75) are unconditional no-ops in sfall_opcodes.cc:3038-3063. AllowUnsafeScripting is intentionally unwired. EtTu Fallout1Behavior=1 silently produces NO FO1 behavior changes. CE MUST provide equivalent high-level APIs for reaction thresholds (25/-25), rest string offset (320), hit-chance nerf revert, Dogmeat PID, encounter dialog disable.
+VOODOO memory patches from sfall's ddraw are unconditional no-ops in CE (write_byte/write_int stubs at sfall_opcodes.cc:3038-3063) -- a different address space means raw memory writes cannot work, and AllowUnsafeScripting is intentionally unwired. Consequence: EtTu Fallout1Behavior=1 silently produces NO FO1 behavior changes on its own. CE must implement equivalent behavior natively via gFallout1Behavior (reaction thresholds 25/-25, rest string offset 320, hit-chance nerf revert, Dogmeat PID, encounter dialog disable).
 
 ## [got-20260707134231-c96f7a]
 Category: gotcha
@@ -212,13 +105,6 @@ Tags: fallout2, sfall, opcodes
 Changed: 2026-07-07T13:42:31.530717
 
 fallout2-ce-extended: F-13 set_critter_skill_mod uses 3 args (critter, skill, mod), set_base_skill_mod uses 2 args (skill, mod). Per-skill maps gBaseSkillModMap and gGlobalCritterSkillModMap must be separate to avoid double-application in skillGetValue.
-
-## [got-20260707134231-b1d629]
-Category: gotcha
-Tags: fallout2, sfall, hooks
-Changed: 2026-07-07T13:42:31.608261
-
-fallout2-ce-extended: HOOK_KEYPRESS arg0 must be DIK keyCode (not pressed state). ret0=1 means consume/block the key. HOOK_MOUSECLICK needs x,y as arg1,arg2 from SDL event.
 
 ## [got-20260707134231-785910]
 Category: gotcha
@@ -233,13 +119,6 @@ Tags: fallout2-ce, sfall, fo1, level-cap
 Changed: 2026-07-07T21:55:18.835522
 
 FO1 level cap in fallout2-ce-extended: PC_LEVEL_MAX was hardcoded to 99 unconditionally. Fix adds statGetLevelCap() that returns 21 when gFallout1Behavior=true. Without this, FO1 mode lets players level to 99 instead of 21.
-
-## [got-20260707215518-1ce35e]
-Category: gotcha
-Tags: fallout2-ce, sfall, perk, compilation
-Changed: 2026-07-07T21:55:18.911594
-
-fallout2-ce-extended perk.cc: gPerkDescriptions is file-static (internal linkage). Cannot access from sfall_opcodes.cc — use perkSetMinLevel/perkGetMinLevel accessors from perk.h instead.
 
 ## [pat-20260707215518-388610]
 Category: pattern
@@ -258,9 +137,9 @@ fallout2-ce-extended: After adding -Wall -Wextra (F-M45), pre-existing warnings 
 ## [pat-20260708082720-16c1e7]
 Category: pattern
 Tags: fallout2-ce-extended, testing, cmake
-Changed: 2026-07-08T08:27:20.866112
+Changed: 2026-07-09T09:33:13.105802
 
-fallout2-ce-extended test infrastructure: test targets that #include production headers need target_include_directories(test_NAME PRIVATE src) in tests/CMakeLists.txt. TEST_ACCESSORS_ENABLED compile definition must be set on test_sources target for sfall_ini/sfall_opcodes test accessors.
+Test infrastructure (fallout2-ce-extended): doctest is header-only; test targets that #include production headers need target_include_directories(test_NAME PRIVATE src) in tests/CMakeLists.txt; TEST_ACCESSORS_ENABLED must be set on the test_sources target (sfall_ini/sfall_opcodes test accessors). test_sources links config.cc/sfall_global_vars.cc/sfall_arrays.cc/sfall_global_scripts.cc/sfall_ini.cc/sfall_lists.cc/sfall_kb_helpers.cc; test_stubs provides debugPrint/compat_* stubs. CMakeLists.txt registers each test with add_executable+target_link_libraries+add_test. Files with 40+ engine deps use the self-contained mirror pattern.
 
 ## [got-20260708150217-e61166]
 Category: gotcha
@@ -313,17 +192,10 @@ NPC fake perks/traits (gFakePerksNpc/gFakeTraitsNpc/gFakeSelectablePerksNpc in s
 
 ## [got-20260709055808-76fa79]
 Category: gotcha
-Tags: sfall, persistence, strings, save-format
-Changed: 2026-07-09T05:58:08.060541
-
-sfall_global_vars save format: version 2 adds string section (length-prefixed records) after float section. Backward compatible — old code ignores trailing data, new code checks version>=2. Keys follow 8-char convention for direct uint64_t packing. sfall_gl_vars_fetch_string() returns new[]-allocated copy — caller must delete[].
-
-## [got-20260709063852-1f4205]
-Category: gotcha
 Tags: fallout2-ce, sfall, save-format, backward-compat
 Changed: 2026-07-09T06:38:52.363154
 
-fallout2-ce-extended: sfall_global_vars save format version 2 adds stringVars section after float section. Version 1 saves load fine (version >= 2 check skips strings). Header size changed from 16 to 20 bytes (added stringCount field). Test in test_global_vars.cc updated.
+sfall_global_vars save format v2 adds a stringVars section (length-prefixed records) after the float section; the header grew 16->20 bytes (added stringCount field). Backward compatible: the version>=2 check reads strings, v1 saves load fine. Keys follow an 8-char convention for direct uint64_t packing. sfall_gl_vars_fetch_string() returns a new[]-allocated copy -- caller must delete[]. Test: test_global_vars.cc.
 
 ## [pat-20260709063857-4940ab]
 Category: pattern
@@ -332,40 +204,12 @@ Changed: 2026-07-09T06:38:57.677207
 
 fallout2-ce-extended: METARULES_SAVE_VERSION bumped 6→7 for gTalkingHeadMood persistence. Version-gated load: if (version >= 7) read gTalkingHeadMood. Old saves (v6) default to -1 from reset().
 
-## [pat-20260709093313-70c3f0]
-Category: pattern
-Tags: fallout2-ce, test-infrastructure
-Changed: 2026-07-09T09:33:13.105802
-
-fallout2-ce-extended test infrastructure: doctest header-only, self-contained mirror pattern for files with 40+ engine deps, test_sources library links config.cc/sfall_global_vars.cc/sfall_arrays.cc/sfall_global_scripts.cc/sfall_ini.cc/sfall_lists.cc/sfall_kb_helpers.cc, test_stubs provides debugPrint/compat_* stubs, CMakeLists.txt registers each test with add_executable+target_link_libraries+add_test
-
-## [dis-20260709235136-4354d2]
-Category: discovery
-Tags: fallout2, audit, pass-13
-Changed: 2026-07-09T23:51:36.053056
-
-fallout2-ce-extended audit pass 13 complete: 39-domain 78-agent discovery found 33 confirmed MEDIUM+ findings. Key bugs: audio.cc:395 wrong-direction seek heap overflow (CRITICAL), scan_unimplemented_opcodes.h hooks 100% false positives (CRITICAL), 11 missing window.cc -1 guards, rest mode bitmask mismatch (sfall 1,2,4 vs CE 0,1,2), mapGetTimeMultiplier unwired, sound_decoder off-by-one, draw div-by-zero. 84/84 tests pass. Commit 7f58356.
-
-## [dis-20260710023753-cebba3]
-Category: discovery
-Tags: fallout2-ce, audit, pass-14
-Changed: 2026-07-10T02:37:53.479303
-
-fallout2-ce-extended audit pass 14 complete: 86 agents, 2 discovery iterations (CONVERGE=ONCE), 17 unique MEDIUM fixes applied. Files modified: combat.cc, loadsave.cc, scan_unimplemented_opcodes.h, scan_unimplemented_sfall.h, sfall_arrays.cc, sfall_kb_helpers.cc, sfall_metarules.cc, sfall_opcodes.cc, sfall_script_hooks.cc. Build: 0 warnings. Tests: 84/84 pass. Commit d649bd9 pushed to main.
-
 ## [con-20260710052652-500f4e]
 Category: config
 Tags: items, compatibility, documentation
 Changed: 2026-07-10T05:26:52.778269
 
 SFALL_COMPATIBILITY.md: HOOK_ITEMDAMAGE has undocumented contract difference — CE arg[4] is hitMode (HIT_MODE_*) while sfall arg[4] is 'type' (attack type flag). No current mods use this hook, so zero impact. Explosion runtime settings (set_explosion_radius, set_attack_explosion_pattern, etc.) are not persisted in savegames — undocumented behavior that matches sfall but should be noted.
-
-## [dis-20260710055606-0abbaa]
-Category: discovery
-Tags: crash, sfall, interpreter
-Changed: 2026-07-10T05:56:06.577407
-
-F-03: Null Program* can reach programExecuteProcedure in scripts.cc:1429 after HOOK_STDPROCEDURE fires hook scripts. Crash address 0x143 = null Program* offset. Fix: re-read program from script->program after hook, or add null guard.
 
 ## [dis-20260710055607-942bd8]
 Category: discovery
@@ -380,13 +224,6 @@ Tags: sfall, compatibility, globals
 Changed: 2026-07-10T05:56:08.709243
 
 F-04: get_sfall_global_int returns INT_MIN sentinel for missing keys instead of sfall contract's 0. RPU scripts use game_time comparison (not 0), so unlikely to hit RPU but breaks pure-sfall mods.
-
-## [dis-20260711000705-858d7c]
-Category: discovery
-Tags: fallout2-ce, audit, production
-Changed: 2026-07-11T00:07:05.541138
-
-fallout2-ce-extended audit pass 17 complete: 106 verified findings fixed across 300-agent workflow. RPU crash root cause was interpreter.cc:3218 missing procedure index bounds check in opProcCall. Build: cmake --preset macos-arm64-debug. Tests: ctest --test-dir out/build/macos-arm64-debug — 84 tests. Commit: 2fabd98
 
 ## [got-20260802233748-f0cc36]
 Category: gotcha
@@ -407,7 +244,7 @@ Category: gotcha
 Tags: save-format, regression, backward-compat, fallout2-ce
 Changed: 2026-08-02T23:37:57.328671
 
-fallout2-ce-extended: ANY persistent-format change MUST bump the format version — handler count 27→28 (lightSave/lightLoad added, C-04), header-CRC added ungated (C-03, pass-11 0e4b74e claimed F2-21 but had no version gate), save CRC read-back on wb stream (C-02) — together made every old save abort or reject CORRUPT; M-62 mid-stream float broke 1.2R alignment. Fix shape (confirmed): VERSION_MINOR 3→4, version-selected handler lists (legacy 27 vs 28), header CRC verified unconditionally in the CRC era. Corollary: NEVER gate a checksum/protection read on the SAME version field it protects (save NEW-3 — a single versionMajor 3→2 byte flip disables all CRC). This confirms the earlier dis-20260704144725-9b3649 prediction that LOAD_SAVE_HANDLER_COUNT=27 was a hardcoded positional chain with decorative version check.
+Save-format discipline & architecture: (1) Architecture -- save = fixed 131B header + sequential handler chunks; saves serialize only runtime object state (hp, ammo, ...), NOT proto structs, so FO2 proto-size differences don't affect save compatibility; the config system is fully extensible (the f1_res.ini pattern is reusable for fo1_settings.ini/ddraw.ini). (2) Discipline -- ANY persistent-format change MUST bump the format version: handler count 27->28 (lightSave/lightLoad added, C-04) and header-CRC added ungated (C-03; pass-11 0e4b74e claimed F2-21 but had no version gate) together made every old save abort/reject as CORRUPT; M-62 mid-stream float broke 1.2R alignment. Fix shape: VERSION_MINOR 3->4, version-selected handler lists (legacy 27 vs 28), header CRC verified unconditionally. Corollary: NEVER gate a checksum/protection read on the SAME version field it protects (save NEW-3 -- a single versionMajor 3->2 byte flip disables all CRC). The original hardcoded LOAD_SAVE_HANDLER_COUNT=27 positional chain had a DECORATIVE version check (SLOT_STATE_UNSUPPORTED_VERSION was unreachable, no version enforcement) -- the root prediction here.
 
 ## [got-20260802233802-266820]
 Category: gotcha
@@ -432,10 +269,10 @@ fallout2-ce-extended: DEFENSIVE GUARDS ADDED WITH INVERTED POLARITY convert late
 
 ## [got-20260802233825-7c4b0a]
 Category: gotcha
-Tags: test, regression, fallout2-ce
+Tags: test, regression, fallout2-ce, coverage
 Changed: 2026-08-02T23:38:25.892371
 
-fallout2-ce-extended: CODIFYING MIRROR TESTS invert regression detection — test mirrors that duplicate production logic can diverge AND can encode the bug as expected behavior, making CI validate the regression. Examples: M-088/test_map.cc:447 asserted the .edg EOF bug as correct (P-15, PRIOR_FIX 78a8373); F-55/test_fixes_saveload.cc encoded the 0x3FFF opcode-mask bug (R-09: 0xC001 & 0x3FFF = 1 < 768 CHECK fails); UF-H-020/test_misc_ui_config_fixes.cc asserted critterSetBonusStat bonus-0→-2 (the C-05 clamp bug); test_stat blessed the XPTable no-op (R-06); M-99 windowWordWrap test had guards production lacked. Lesson: rewrite the codifying mirror in the SAME pass as the fix (converts it to regression-detecting — a future re-add FAILS CI); mirrors give false confidence — prefer production-linked tests or periodic mirror-vs-production drift checks.
+Test-quality findings (E-Test suite): CODIFYING MIRROR TESTS invert regression detection -- mirrors that duplicate production logic can diverge AND encode the bug as expected behavior, so CI validates the regression. Examples: M-088/test_map.cc:447 asserted the .edg EOF bug as correct; F-55/test_fixes_saveload.cc encoded the 0x3FFF opcode-mask bug; UF-H-020 asserted critterSetBonusStat bonus-0->-2 (C-05 clamp bug); test_stat blessed the XPTable no-op; M-99 windowWordWrap had guards production lacked. Lesson: rewrite the codifying mirror in the SAME pass as the fix (converts it to regression-detecting -- a future re-add FAILS CI); mirrors give false confidence -- prefer production-linked tests or periodic mirror-vs-production drift checks. Audit scale: 45 test files (~42K LOC) -- 2 CRITICAL (7 TODO placeholders with CHECK(true), knockback opcodes untested), 5 HIGH (mirror test fallacy, VFS fs_resize mode mismatch, 150 file-static opcodes untestable, worldmap subtile skip, broken-code test), 9 MEDIUM, 4 LOW; coverage gaps: skill opcodes 0%, combat advanced 0%, lock/event/utility opcodes 0%; 38/45 tests were self-contained mirrors.
 
 ## [got-20260817000651-b24b40]
 Category: gotcha
@@ -443,13 +280,6 @@ Tags: sfall, config, et-tu
 Changed: 2026-08-17T00:06:51.285614
 
 fallout2-ce-extended: contentConfigTryMigrateFromSfall writes gSfallConfig preset '0' defaults into data/config/game#patch.cfg BEFORE contentConfigInit's configRead — any set-if-absent seeding of migrated keys is defeated by migration-written zeros; seed unconditionally (et tu gate keys use this pattern)
-
-## [got-20260817000651-e58a8e]
-Category: gotcha
-Tags: vfs, fs_copy, path
-Changed: 2026-08-17T00:06:51.362963
-
-fallout2-ce-extended: compat_stricmp is pure ASCII case-fold — no '/' vs '\' separator normalization; sfallVfsResolvePath doesn't normalize either (only traversal/absolute/drive-letter rejection + root prepend). fs_copy same-path branch compares RESOLVED paths case-insensitively
 
 ## [got-20260817040334-6608fe]
 Category: gotcha
@@ -516,17 +346,10 @@ sfall FastShotFix per-mode contract (verified against sfall source 2026-08-17): 
 
 ## [got-20260817234041-5d33ed]
 Category: gotcha
-Tags: config, gotcha, worldmap, fallout2-ce
-Changed: 2026-08-17T23:40:41.927062
+Tags: config, overload, worldmap, perk, gotcha
+Changed: 2026-08-23T16:16:35.059861
 
-configGetInt(&config, section, key, ptr, default) with the 5-arg DEFAULT OVERLOAD WRITES the default into *ptr when the key is absent — using it after a prior value was set silently clobbers it. Use the 4-arg present-semantics overload (returns false, leaves *ptr untouched) when a default should not override. Hit in F-072 worldmap start_pos bug (worldmap.cc:1352-1354) where the fork override wrote 173/122 over the upstream [start] worldmap_x/y value; fixed 2026-08-17.
-
-## [got-20260817234043-3adc8f]
-Category: gotcha
-Tags: fs, stdio, vfs, rpu, sfall, gotcha, fallout2-ce
-Changed: 2026-08-17T23:40:43.109649
-
-FILE* handles handed to scripts (fs_create/fs_copy/fs_resize in sfall_opcodes.cc) are stdio-buffered by default — fs_write_short writes sit in user space and are invisible to the engine's independent fopen reads during the session (RPU fs_copy same-path FRM FPS patching was silently inert). Fix: setvbuf(f, nullptr, _IONBF, 0) at open (sfallVfsFopen helper, 2026-08-17). Also: fs_copy cannot open files inside .dat archives (plain fopen) — DAT-resident patching requires the mod's pre-patched DATs.
+C++ overload pitfalls that silently change behavior at existing call sites: (1) configGetInt(&config, section, key, ptr, default) -- the 5-arg DEFAULT OVERLOAD WRITES the default into *ptr when the key is absent, clobbering a prior value; use the 4-arg present-semantics overload when a default must not override (hit in the F-072 worldmap start_pos bug, worldmap.cc:1352-1354, fixed 2026-08-17). (2) Adding a typed overload next to an int-overload (e.g. perkGetMaxRank(Perk) vs perkGetMaxRank(int)) changes ALL call sites passing a typed enum -- C++ prefers the exact enum match, bypassing the int overload's extra semantics (set_perk_ranks override, -1 invalid contract). When merging upstream code that adds an enum-typed overload, grep callers first; if semantics differ, drop the new overload (upstream #698 -> fork fix 6744652a).
 
 ## [got-20260817234044-9c74f2]
 Category: gotcha
@@ -534,20 +357,6 @@ Tags: et-tu, sfall, opcode, gotcha, fallout2-ce
 Changed: 2026-08-17T23:40:44.050120
 
 et tu ce_enabled macro (fo1.h:62) = metarule_exist('opcode_exists') AND NOT opcode_exists(0x823B). 0x823B is sfall's modified_ini — CE MUST keep it unregistered: implementing it flips ce_enabled=false and disables ALL et tu CE-path script workarounds (gl_apcost.ssl AP handling etc.). Guarded by comment at sfall_opcodes.cc:8903.
-
-## [got-20260818002659-354454]
-Category: gotcha
-Tags: engine, config, smoke, teststand
-Changed: 2026-08-18T00:26:59.283439
-
-CE engine reads fallout2.cfg + ddraw.ini from argv[0] dir (app bundle Contents/MacOS), NOT from cwd/game folder — game folder copies only work when launched with bare argv[0]. Test stand fix: inject per-stand cfg into bundle via smoke/deploy.sh; macos 26 codesign treats every file in Contents/MacOS as code object — sign injected configs individually before re-signing bundle
-
-## [pat-20260818002659-20d078]
-Category: pattern
-Tags: fallout2, ceu, teststand, setup
-Changed: 2026-08-18T00:26:59.362408
-
-CE mac test stand: app bundle goes in game folder (cwd=bundle parent), data paths in cfg resolve against cwd; Et Tu uses '..\master.dat' relative paths; RPU defaults (master.dat, data, mods) match game folder layout so it works even without cfg read
 
 ## [got-20260818040918-4a9dc9]
 Category: gotcha
@@ -563,19 +372,12 @@ Changed: 2026-08-18T04:09:19.448669
 
 Program-wait handling in FO2 CE: 'a WAITING program yields its dispatch slot' must be expressed at EVERY ungated -1 dispatch channel — interpret loop (WAITING branch), programProcessProcedureEvents entry guard, kGlobalScriptBusyFlags. Choke-point guard at programExecuteProcedure would freeze dialogs (game_dialog.cc:2466 reply site deliberately re-enters dialog-WAITING programs) — guard placement must be per-channel, not global. Residual ungated sites: sfall hooks :232, sfall_animation :116, sfall_opcodes :3883/:6336, sfall_arrays :1314/:1387.
 
-## [dis-20260818040923-55654c]
-Category: discovery
-Tags: fallout2, smoke, deploy, ctest
-Changed: 2026-08-18T04:09:23.238747
-
-Smoke stand ops: deployed binary MD5 differs from tree build EXPECTED after deploy.sh re-signs (codesign rewrites the signature blob) — compare __text segment (offset 25632) instead. ctest on the Xcode multi-config build requires -C RelWithDebInfo. Engine auto-erases data/MAPS/*.SAV at launch (gameInitWithOptions→_InitLoadSave→MapDirErase) — stale snapshot shadowing self-cleans on standard flows.
-
 ## [got-20260818181617-c2b3de]
 Category: gotcha
 Tags: fallout2, scripts, interpreter, uaf, root-cause
 Changed: 2026-08-18T18:16:17.688032
 
-F-034 (fork 36414b6) set program->exited=true in opExitProgram (O_EXIT_PROGRAM 0x8010 — the NORMAL script-termination opcode). _updatePrograms then freed every script's Program right after its start proc ran, leaving script->program dangling (LOADED flag still set) → dead world (M-46 silently skipped freed memory) + UAF SIGSEGV in scriptExecProc→programExecuteProcedure (null/garbage Program*). Upstream only sets the flag, never exited=true. Reverted in opExitProgram; added programListContains() UAF detector + DBGTRACE lifecycle logging. 92/92 tests pass.
+Script Program* lifecycle & UAF: (1) F-034 (fork 36414b6) set program->exited=true in opExitProgram (O_EXIT_PROGRAM 0x8010 -- the NORMAL termination opcode); _updatePrograms then freed every script's Program right after its start proc ran, leaving script->program dangling (LOADED flag still set) -> dead world + UAF SIGSEGV in scriptExecProc->programExecuteProcedure. Upstream only sets the flag, never exited=true. Reverted; added programListContains() UAF detector + DBGTRACE lifecycle logging. (2) F-03: a Null Program* can reach programExecuteProcedure in scripts.cc:1429 after HOOK_STDPROCEDURE fires hook scripts (crash address 0x143 = null Program* offset) -- re-read program from script->program after the hook or add a null guard. 92/92 tests pass.
 
 ## [got-20260818184036-aa3c8a]
 Category: gotcha
@@ -586,10 +388,10 @@ BoostScriptDialogLimit (ddraw.ini [Misc]) is a BOOLEAN toggle in sfall ('1 = boo
 
 ## [got-20260818192654-712c3d]
 Category: gotcha
-Tags: fallout2, sfall, vfs, fscopy, opcodes, et-tu
+Tags: vfs, fs_copy, path, sfall, rpu, et-tu
 Changed: 2026-08-18T19:26:54.185188
 
-fs_copy (sfall_opcodes.cc) was disk-only (compat_fopen): sources inside .dat archives (RPU goris-derobing art\critters\*.frm) or directory mods (et tu classicWM art\INTRFACE\classicWM\*.frm from mods/fo1_base) failed with 'cannot open source'. Fixed 2026-08-18: sfallVfsReadFile() helper reads via engine VFS (fileOpen) with plain-fopen fast path; same-path fs_copy materializes to master_patches dir (data/) so the engine art loader sees patched bytes BEFORE the archive; different-path dest also materialized to patches dir. Also: 0x81a3 eax_available/0x81a4 set_eax_environment stubs added (et tu mods call them; were 'undefined opcode').
+fs_copy / VFS file I/O (sfall_opcodes.cc): (1) FILE* handles handed to scripts (fs_create/fs_copy/fs_resize) are stdio-buffered by default -- fs_write_short writes sit in user space and are invisible to the engine's independent fopen reads during the session (RPU fs_copy same-path FRM FPS patching was silently inert). Fix: setvbuf(f, nullptr, _IONBF, 0) at open via sfallVfsFopen (2026-08-17). (2) fs_copy was disk-only (compat_fopen), so sources inside .dat archives (RPU goris-derobing art\critters\*.frm) or directory mods (et tu classicWM from mods/fo1_base) failed with 'cannot open source'. Fix (2026-08-18): sfallVfsReadFile() reads via the engine VFS (fileOpen) with a plain-fopen fast path; same-path fs_copy materializes to master_patches (data/) so the engine art loader sees patched bytes BEFORE the archive; different-path dest also materializes to the patches dir. (3) 0x81a3 eax_available / 0x81a4 set_eax_environment stubs added (et tu mods call them). Note: compat_stricmp is pure ASCII case-fold -- no '/' vs '\' separator normalization; sfallVfsResolvePath doesn't normalize either (only traversal/absolute/drive-letter rejection + root prepend); fs_copy's same-path branch compares RESOLVED paths case-insensitively.
 
 ## [got-20260818192655-46f906]
 Category: gotcha
@@ -608,9 +410,9 @@ Debug instrumentation inventory for smoke builds: silent unless [debug] mode=log
 ## [dis-20260818235558-8577bc]
 Category: discovery
 Tags: fallout2, map-format, et-tu, parsing
-Changed: 2026-08-18T23:55:58.372942
+Changed: 2026-08-19T22:41:59.403049
 
-FO2/et tu MAP file script section format: per type — count(int32), then ceil(count/16) extents; EACH extent = 16 script records + length(int32, validated 0..16) + next(int32, read+discarded) — scriptListExtentRead scripts.cc:2545. Record sizes by SID_TYPE: SYSTEM=16 ints, SPATIAL=18, TIMED=17, ITEM=16, CRITTER=16 (64/72/68/64/64 bytes). et tu SHADYW.MAP: type3 ITEM count=8, type4 CRITTER count=33; object section starts after scripts. Object record = 18 ints (id,tile,x,y,sx,sy,frame,rot,fid,flags,elev,pid,cid,lightDist,lightInt,outline,sid,scriptIdx) + objectDataRead (objectWrite object.cc:704). Map header: 236 bytes + gv*4 + lv*4 + squares (10000 ints per present elevation; flags 0x2/0x4/0x8 = elev present).
+FO2/et tu MAP file format: script section per type = count(int32), then ceil(count/16) extents; EACH extent = 16 script records + length(int32, validated 0..16) + next(int32, read+discarded) -- scriptListExtentRead scripts.cc:2545. Record sizes by SID_TYPE: SYSTEM=16 ints, SPATIAL=18, TIMED=17, ITEM=16, CRITTER=16 (64/72/68/64/64 bytes). Objects with inventory->length != 0 carry NESTED item records after their base record -- each item = quantity(int32) + full objectRead (18 ints + objectDataRead, recursively); omitting the recursion desyncs the walk. Critter base record = 72 + inv(3) + reaction/flags(1) + combat(7) + hp/rad/poison(3) ints. Object record = 18 ints (id,tile,x,y,sx,sy,frame,rot,fid,flags,elev,pid,cid,lightDist,lightInt,outline,sid,scriptIdx) + objectDataRead (objectWrite object.cc:704). Map header: 236 bytes + gv*4 + lv*4 + squares (10000 ints per present elevation; flags 0x2/0x4/0x8 = elev present).
 
 ## [got-20260819022058-a59ed2]
 Category: gotcha
@@ -631,14 +433,14 @@ Category: gotcha
 Tags: fallout2, input, keyboard, hook, keypress, regression
 Changed: 2026-08-19T02:56:41.612446
 
-HOOK_KEYPRESS sentinel contract (input.cc vs sfall_kb_helpers.cc): this fork's input.cc treats -1 from sfall_kb_handle_key_pressed as BLOCK the key (F-27 keyBlocked), 0/SDL_SCANCODE_UNKNOWN as pass-through. Upstream fallout2-ce treats -1 as 'no override/pass' and 0 as swallow — EXACT OPPOSITE. The Aug 16 sync merge (16bc1568 via b405e59) flipped the two no-hook early returns in sfall_kb_helpers.cc to -1, swallowing EVERY key when !gGameLoaded (main menu, character creation — gGameLoaded only set after char-selector at main.cc:160) or when no script registered HOOK_KEYPRESS (save-name dialog). Symptom: text fields dead, backspace dead, held keys 'occasionally work' (SDL repeat events skip the hook at input.cc:1034). Fixed: those two returns are SDL_SCANCODE_UNKNOWN again; only ret0==255-swallow returns -1. Regression tests: test_sfall_kb_helpers.cpp PRODUCTION: handle_key_pressed sections.
+HOOK_KEYPRESS contract: arg0 is the DIK keyCode (console), arg1 the vkey, arg2 the pressed state, arg3 the keyID/left-right distinction; ret0=1 (or 255) consumes/blocks the key. This fork's input.cc treats -1 from sfall_kb_handle_key_pressed as BLOCK and 0/SDL_SCANCODE_UNKNOWN as pass-through -- the EXACT OPPOSITE of upstream fallout2-ce (-1 = pass, 0 = swallow). The Aug 16 sync merge (16bc1568 via b405e59) flipped the two no-hook early returns to -1, swallowing EVERY key when !gGameLoaded (main menu/char creation) or when no HOOK_KEYPRESS is registered (save-name dialog): text fields dead, backspace dead, held keys intermittently work. Fixed by restoring SDL_SCANCODE_UNKNOWN at those two returns; only ret0==255-swallow returns -1. Prior related defect: CE's HOOK_KEYPRESS passed a hardcoded 0 for the VK arg (RPU Party Orders depends on the left/right distinction) -- verify arg wiring. HOOK_MOUSECLICK needs x,y as arg1,arg2 from the SDL event. Regression tests: test_sfall_kb_helpers.cpp PRODUCTION handle_key_pressed sections.
 
 ## [got-20260819200251-0b9c45]
 Category: gotcha
-Tags: fallout2, smoke, config
+Tags: engine, config, smoke, teststand
 Changed: 2026-08-19T20:02:51.435125
 
-Smoke-stand fallout2.cfg: the bundle copy (Contents/MacOS/fallout2.cfg) is the LIVE config — engine reads/writes next to executable. Stand-root cfg is only the deploy template. deploy.sh overwrites bundle copy, wiping in-game persisted keys (RPU bundle has extra [qol]/[ui]/mouse_lock). Edit bundle copy directly for live changes; keep stand-root in sync for future deploys. et tu bundle copy had CRLF endings.
+Smoke test-stand setup & ops: (1) The engine reads fallout2.cfg + ddraw.ini from the argv[0] directory (app bundle Contents/MacOS), NOT cwd; the bundle copy is the LIVE config (engine reads/writes next to the executable), while the stand-root copy is only the deploy template (game-folder cfg copies only work when launched with bare argv[0]). smoke/deploy.sh overwrites the bundle copy, wiping in-game persisted keys; edit the bundle copy directly for live changes and keep the stand-root copy in sync (re-run deploy after editing it). macOS 26 codesign treats every file in Contents/MacOS as a code object -- sign injected configs individually before re-signing the bundle. (2) Layout: app bundle in game folder (cwd = bundle parent); data paths in cfg resolve against cwd; Et Tu uses '..\master.dat' relative paths; RPU defaults (master.dat, data, mods) match the game folder layout. (3) The deployed binary MD5 differs from the tree build after deploy.sh re-signs (codesign rewrites the signature blob) -- compare the __text segment (offset 25632) instead. ctest on the Xcode multi-config build needs -C RelWithDebInfo. The engine auto-erases data/MAPS/*.SAV at launch (gameInitWithOptions->_InitLoadSave->MapDirErase), so stale snapshots self-clean.
 
 ## [got-20260819213552-410fe1]
 Category: gotcha
@@ -667,13 +469,6 @@ Tags: proto, lst, map-format
 Changed: 2026-08-19T22:41:59.331969
 
 FO2 proto lookup: _proto_list_str (proto.cc:205) matches 'pid & 0xFFFFFF' against a 1-BASED line counter in <type>.lst — reading lst[index] 0-based in an offline parser is off by one. Proto .pro files: type field at offset 32, material at 36 (after pid/msgId/fid/lightDistance/lightIntensity/flags/extendedFlags/sid).
-
-## [got-20260819224159-49fb8d]
-Category: gotcha
-Tags: map-format, loadsave
-Changed: 2026-08-19T22:41:59.403049
-
-FO2 MAP object section: objects with inventory->length != 0 carry nested item records after their base record — each item = quantity(int32) + full objectRead (18 ints + objectDataRead, recursively). Critter base record = 72 + inv(3) + reaction/flags(1) + combat(7) + hp/rad/poison(3) ints. omitting inventory recursion desyncs the walk.
 
 ## [dis-20260819224159-c93cf1]
 Category: discovery
@@ -712,24 +507,10 @@ set_scr_name override poisoning (Issue B, 2026-08-23): the RPU/EtTu compat fork 
 
 ## [got-20260823014259-8e5eb4]
 Category: gotcha
-Tags: barter, ettu, weight, gotcha
-Changed: 2026-08-23T01:42:59.816250
-
-FO1 box traders (et tu) are intentionally overweight: get_barter_inven/move_obj_inven_to_obj force-loads full stock at talk start (itemMoveAll = force). ANY non-force itemMove/itemAttemptAdd targeting the trader fails with rc=-6 (max weight) — including returning the trader's own items from the barter table. All barter moves must use itemMoveForce (barterMoveToTable, barterMoveFromTable both directions, barterAttemptTransaction M-90/M-101); weight gates only make sense on the player side (barterAttemptTransaction check).
-
-## [pat-20260823014307-d4e3fd]
-Category: pattern
-Tags: barter, pattern
+Tags: barter, et-tu, weight, pattern
 Changed: 2026-08-23T01:43:07.726974
 
-Barter move functions: the undo direction (table -> critter inventory) must use itemMoveForce like the setup direction (inventory -> table). Upstream CE uses itemMoveForce in BOTH branches of barterMoveFromTable. A non-force itemMove in any barter path is a regression trap for FO1 box traders; grep for non-force itemMove (not itemMoveForce/itemMoveAll) inside barter* functions when reviewing barter fixes. Prior fix e17707f2 fixed only barterAttemptTransaction and missed barterMoveFromTable — completed in adbcc2f9 (M-101).
-
-## [got-20260823161635-5f96bd]
-Category: gotcha
-Tags: overload, perk, merge, gotcha
-Changed: 2026-08-23T16:16:35.059861
-
-Adding a typed overload (e.g. perkGetMaxRank(Perk)) next to an existing int-overload (perkGetMaxRank(int)) silently changes behavior at ALL existing call sites that pass a typed enum arg — C++ overload resolution prefers the exact enum match, bypassing the int overload's extra semantics (here: set_perk_ranks override + -1 invalid contract). When merging upstream code that adds an enum-typed overload, grep existing callers first and check whether the new overload's semantics differ from the int overload; if they do, drop the new overload and let enum->int conversion bind to the canonical one (upstream #698 -> fork fix 6744652a). Same class as configGetInt default-overload gotcha (got-20260817234041).
+FO1 box traders (et tu) are intentionally overweight: get_barter_inven/move_obj_inven_to_obj force-loads full stock at talk start (itemMoveAll=force). ANY non-force itemMove/itemAttemptAdd targeting the trader fails rc=-6 (max weight) -- including returning the trader's own items. Rule: ALL barter moves must use itemMoveForce in BOTH directions (setup inventory->table AND undo table->inventory); a non-force itemMove in any barter path is a regression trap. Only the player-side weight check in barterAttemptTransaction is meaningful. Upstream CE uses itemMoveForce in both branches of barterMoveFromTable. Grep non-force itemMove inside barter* functions when reviewing barter fixes (prior fix e17707f2 fixed only barterAttemptTransaction and missed barterMoveFromTable -- completed in adbcc2f9, M-101).
 
 ## [dis-20260823161640-cc3da9]
 Category: discovery
@@ -806,5 +587,5 @@ Category: gotcha
 Tags: macos, signing, release
 Changed: 2026-09-01T20:19:16.117284
 
-macOS signing/release: Developer ID Application .cer from portal has NO private key (usable for nothing alone); must pair with the CSR keypair used at creation (openssl pkcs12 -export then security import -T /usr/bin/codesign). notarytool submit --wait --apple-id --team-id --password works from CLI; staple after. App must be re-signed with Developer ID for the ENTIRE bundle incl nested executable before notarization. ditto realpath errors were transient/flaky in this env (retry works).
+macOS release pipeline: (1) Signing -- a Developer ID Application .cer from the portal has NO private key (usable for nothing alone); pair it with the CSR keypair used at creation (openssl pkcs12 -export then security import -T /usr/bin/codesign). Re-sign the ENTIRE bundle including nested executables with Developer ID before notarization. notarytool submit --wait --apple-id --team-id --password works from CLI; staple after. (2) Packaging -- CPack's 'cmake --build --target package' (DragNDrop) with the Xcode generator RE-SIGNS the .app ad-hoc ('Sign to Run Locally'), destroying the prior codesign signature; use manual 'hdiutil create -srcfolder <staging_with_signed_app> -format UDZO' instead (cp -R preserves the signed bundle). (3) ditto realpath errors were transient/flaky in this env (retry works).
 
