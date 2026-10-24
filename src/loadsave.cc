@@ -2859,6 +2859,7 @@ static int _GetSlotList()
 {
     std::fill_n(gLoadSaveSlotPageLoaded, kMaxSaveTotalSlots / slotsPerPage, false);
     loadSaveLoadSlotPage(_currentSlotPage);
+    loadSaveLoadSlotPage(_slot_cursor / slotsPerPage); // the auto-quicksave ring moves the cursor off the displayed page
     return slotsPerPage;
 }
 
