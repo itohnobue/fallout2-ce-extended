@@ -1,6 +1,7 @@
 #ifndef ART_H
 #define ART_H
 
+#include <cstddef>
 #include <memory>
 
 #include "animation.h"
@@ -74,7 +75,7 @@ int artAliasFid(int fid);
 int buildFid(ObjectType objectType, int frmId, int animType = 0, int weaponCode = 0, Rotation rotation = ROTATION_NE);
 int artListIndex(ObjectType objectType, const char* name);
 Art* artLoad(const char* path);
-int artRead(const char* path, unsigned char* data);
+int artRead(const char* path, unsigned char* data, size_t size);
 int artWrite(const char* path, unsigned char* data);
 
 using ArtPtr = InternalPtr<Art>;

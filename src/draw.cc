@@ -435,7 +435,11 @@ void bufferOutline(unsigned char* buf, int width, int height, int pitch, int col
 
         for (int x = 0; x < width; x++) {
             if (*ptr != 0 && cycle) {
-                *(ptr - 1) = color & 0xFF;
+                // Leading edge of the span: nothing to outline on the left
+                // boundary, where `ptr - 1` belongs to the previous row.
+                if (x != 0) {
+                    *(ptr - 1) = color & 0xFF;
+                }
                 cycle = false;
             } else if (*ptr == 0 && !cycle) {
                 *ptr = color & 0xFF;
@@ -455,7 +459,6 @@ void bufferOutline(unsigned char* buf, int width, int height, int pitch, int col
         for (int y = 0; y < height; y++) {
             if (*ptr != 0 && cycle) {
                 if (y > 0) {
-                    // TODO: Check in debugger, might be a bug.
                     *(ptr - pitch) = color & 0xFF;
                 }
                 cycle = false;

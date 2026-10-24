@@ -1082,7 +1082,7 @@ static int endgameEndingInit()
     File* stream;
     char str[256];
     char *ch, *tok;
-    const char* delim = " \t,";
+    const char* delim = " \t,\r\n";
     EndgameEnding entry;
     EndgameEnding* entries;
     size_t narratorFileNameLength;
@@ -1192,7 +1192,7 @@ int endgameDeathEndingInit()
     File* stream;
     char str[256];
     char* ch;
-    const char* delim = " \t,";
+    const char* delim = " \t,\r\n";
     char* tok;
     EndgameDeathEnding entry;
     EndgameDeathEnding* entries;

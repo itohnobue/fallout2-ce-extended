@@ -47,6 +47,7 @@
 #include "sfall_script_hooks.h"
 #include "skill.h"
 #include "stat.h"
+#include "string_utils.h"
 #include "svga.h"
 #include "text_font.h"
 #include "tile.h"
@@ -6004,7 +6005,7 @@ void _combat_display(Attack* attack)
         }
     }
 
-    char text[280];
+    char text[280] = {};
     if (attack->defender != nullptr
         && attack->intendedTarget != nullptr
         && attack->defender != attack->intendedTarget
@@ -6055,7 +6056,7 @@ void _combat_display(Attack* attack)
             }
         }
 
-        strcat(text, ".");
+        stringAppend(text, ".");
 
         displayMonitorAddMessage(text);
     }
@@ -6145,7 +6146,7 @@ void _combat_display(Attack* attack)
                     }
 
                     if ((attack->defenderFlags & DAM_DEAD) != DAM_NONE) {
-                        strcat(text, ".");
+                        stringAppend(text, ".");
                         displayMonitorAddMessage(text);
 
                         if (attack->defender == gDude) {
@@ -6174,7 +6175,7 @@ void _combat_display(Attack* attack)
                     combatAddDamageFlagsDescription(text, sizeof(text), attack->defenderFlags, attack->defender);
                 }
 
-                strcat(text, ".");
+                stringAppend(text, ".");
 
                 displayMonitorAddMessage(text);
             }
@@ -6213,7 +6214,7 @@ void _combat_display(Attack* attack)
 
             combatAddDamageFlagsDescription(text, sizeof(text), attack->attackerFlags, attack->attacker);
 
-            strcat(text, ".");
+            stringAppend(text, ".");
 
             displayMonitorAddMessage(text);
         }
@@ -6222,7 +6223,7 @@ void _combat_display(Attack* attack)
             if (attack->attackerDamage > 0) {
                 combatCopyDamageAmountDescription(text, sizeof(text), attack->attacker, attack->attackerDamage);
                 combatAddDamageFlagsDescription(text, sizeof(text), attack->attackerFlags, attack->attacker);
-                strcat(text, ".");
+                stringAppend(text, ".");
                 displayMonitorAddMessage(text);
             }
         }
@@ -6233,7 +6234,7 @@ void _combat_display(Attack* attack)
         if ((critter->data.critter.combat.results & DAM_DEAD) == DAM_NONE) {
             combatCopyDamageAmountDescription(text, sizeof(text), critter, attack->extrasDamage[index]);
             combatAddDamageFlagsDescription(text, sizeof(text), attack->extrasFlags[index], critter);
-            strcat(text, ".");
+            stringAppend(text, ".");
 
             displayMonitorAddMessage(text);
         }

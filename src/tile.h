@@ -10,6 +10,10 @@ namespace fallout {
 #define TILE_SET_CENTER_REFRESH_WINDOW 0x01
 #define TILE_SET_CENTER_FLAG_IGNORE_SCROLL_RESTRICTIONS 0x02
 
+// Distance reported when either tile is invalid. This value is script-visible:
+// scripts read 9999 as "no path" through tile_distance/tile_distance_objs.
+#define TILE_MAX_DISTANCE 9999
+
 typedef void(TileWindowRefreshProc)(Rect* rect);
 typedef void(TileWindowRefreshElevationProc)(Rect* rect, int elevation);
 

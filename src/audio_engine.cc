@@ -181,6 +181,10 @@ int audioEngineCreateSoundBuffer(unsigned int size, int bitsPerSample, int chann
         std::lock_guard<std::recursive_mutex> lock(soundBuffer->mutex);
 
         if (!soundBuffer->active) {
+            if (size == 0) {
+                return -1;
+            }
+
             soundBuffer->active = true;
             soundBuffer->size = size;
             soundBuffer->bitsPerSample = bitsPerSample;
@@ -434,7 +438,7 @@ bool audioEngineSoundBufferLock(int soundBufferIndex, unsigned int writePos, uns
         return false;
     }
 
-    if (audioBytes1 == nullptr) {
+    if (audioPtr1 == nullptr || audioBytes1 == nullptr || soundBuffer->data == nullptr || soundBuffer->size == 0) {
         return false;
     }
 
@@ -448,7 +452,11 @@ bool audioEngineSoundBufferLock(int soundBufferIndex, unsigned int writePos, uns
         writeBytes = soundBuffer->size;
     }
 
-    if (writePos + writeBytes <= soundBuffer->size) {
+    if (writePos >= soundBuffer->size || writeBytes > soundBuffer->size) {
+        return false;
+    }
+
+    if (writeBytes <= soundBuffer->size - writePos) {
         *(unsigned char**)audioPtr1 = (unsigned char*)soundBuffer->data + writePos;
         *audioBytes1 = writeBytes;
 

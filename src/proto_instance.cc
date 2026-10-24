@@ -36,6 +36,7 @@
 #include "sfall_script_hooks.h"
 #include "skill.h"
 #include "stat.h"
+#include "string_utils.h"
 #include "tile.h"
 #include "worldmap.h"
 
@@ -398,7 +399,7 @@ int objectExamineFunc(Object* critter, Object* target, void (*fn)(const char* st
                 const int maxiumHitPoints = critterGetStat(target, STAT_MAXIMUM_HIT_POINTS);
                 const int currentHitPoints = critterGetStat(target, STAT_CURRENT_HIT_POINTS);
                 snprintf(formattedText, sizeof(formattedText), hpMessageListItem.text, currentHitPoints, maxiumHitPoints);
-                strcat(formattedText, endingMessageListItem.text);
+                stringAppend(formattedText, endingMessageListItem.text);
             }
         } else {
             int crippledMsgIdOffset = critterIsCrippled(target) ? -2 : 0;
@@ -479,7 +480,7 @@ int objectExamineFunc(Object* critter, Object* target, void (*fn)(const char* st
                 exit(1);
             }
 
-            strcat(formattedText, crippledMsg.text);
+            stringAppend(formattedText, crippledMsg.text);
         }
 
         fn(formattedText);
@@ -501,7 +502,7 @@ int objectExamineFunc(Object* critter, Object* target, void (*fn)(const char* st
             if (car != 0) {
                 snprintf(formattedText, sizeof(formattedText), carMessageListItem.text, 100 * wmCarGasAmount() / 80000);
             } else {
-                strcpy(formattedText, carMessageListItem.text);
+                stringCopy(formattedText, carMessageListItem.text);
             }
 
             fn(formattedText);

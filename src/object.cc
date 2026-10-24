@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include <algorithm>
+#include <limits>
 #include <vector>
 
 #include "animation.h"
@@ -533,6 +534,12 @@ static int objectLoadAllInternal(File* stream)
         return -1;
     }
 
+    if (objectCount < 0
+        || static_cast<size_t>(objectCount) > std::numeric_limits<size_t>::max() / sizeof(*gObjectFids)) {
+        debugPrint("\nError loading objects: invalid object count %d.\n", objectCount);
+        return -1;
+    }
+
     // M-76: null/reset after free. Without this, a load where objectCount == 0
     // (or a failed load after a prior success) leaves a dangling non-null
     // gObjectFids with a stale length, defeating the `== nullptr` guard in
@@ -556,6 +563,11 @@ static int objectLoadAllInternal(File* stream)
     for (int elevation = 0; elevation < ELEVATION_COUNT; elevation++) {
         int objectCountAtElevation;
         if (fileReadInt32(stream, &objectCountAtElevation) == -1) {
+            return -1;
+        }
+
+        if (objectCountAtElevation < 0) {
+            debugPrint("\nError loading objects: invalid elevation object count %d.\n", objectCountAtElevation);
             return -1;
         }
 

@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unordered_set>
 
+#include <limits>
+
 #include "art.h"
 #include "character_editor.h"
 #include "combat.h"
@@ -570,6 +572,18 @@ int objectDataRead(Object* obj, File* stream)
     if (fileReadInt32(stream, &(inventory->capacity)) == -1) return -1;
     // CE: Original code reads inventory items pointer which is meaningless.
     if (fileReadInt32(stream, &temp) == -1) return -1;
+
+    // The inventory length/capacity come straight from the save file and drive
+    // the item-array allocation and copy in the load path; reject values that
+    // cannot describe a real array before they are used.
+    if (inventory->length < 0
+        || inventory->capacity < inventory->length
+        || static_cast<size_t>(inventory->capacity) > std::numeric_limits<size_t>::max() / sizeof(InventoryItem)) {
+        debugPrint("\nError reading object: invalid inventory length/capacity %d/%d.\n",
+            inventory->length,
+            inventory->capacity);
+        return -1;
+    }
 
     if (objectTypeFromPid(obj->pid) == OBJ_TYPE_CRITTER) {
         if (fileReadInt32(stream, &(obj->data.critter.reaction)) == -1) return -1;

@@ -1473,6 +1473,10 @@ int gameDialogSetMessageReply(Program* program, int messageListId, int messageId
 // 0x44567C
 int gameDialogSetTextReply(Program* program, int messageListId, const char* text)
 {
+    if (text == nullptr) {
+        text = "";
+    }
+
     gameDialogAddReviewText(text);
 
     gDialogReplyProgram = program;

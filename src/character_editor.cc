@@ -47,6 +47,7 @@
 #include "settings.h"
 #include "skill.h"
 #include "stat.h"
+#include "string_utils.h"
 #include "svga.h"
 #include "text_font.h"
 #include "touch.h"
@@ -4250,8 +4251,8 @@ static int characterEditorShowOptions()
                 // PRINT TO FILE
                 string4[0] = '\0';
 
-                strcat(string4, "*.");
-                strcat(string4, "TXT");
+                stringAppend(string4, "*.");
+                stringAppend(string4, "TXT");
 
                 char** fileList;
                 int fileListLength = fileNameListInit(string4, &fileList);
@@ -4263,11 +4264,11 @@ static int characterEditorShowOptions()
                     snprintf(string4, sizeof(string4), "%s", getmsg(&gCharacterEditorMessageList, &gCharacterEditorMessageListItem, 602));
 
                     if (showSaveFileDialog(string4, fileList, string1, fileListLength, 168, 80, 0) == 0) {
-                        strcat(string1, ".");
-                        strcat(string1, "TXT");
+                        stringAppend(string1, ".");
+                        stringAppend(string1, "TXT");
 
                         string4[0] = '\0';
-                        strcat(string4, string1);
+                        stringAppend(string4, string1);
 
                         if (characterFileExists(string4)) {
                             // already exists
@@ -4289,7 +4290,7 @@ static int characterEditorShowOptions()
 
                         if (rc != 0) {
                             string4[0] = '\0';
-                            strcat(string4, string1);
+                            stringAppend(string4, string1);
 
                             if (characterPrintToFile(string4) == 0) {
                                 snprintf(string4, sizeof(string4),
@@ -4322,8 +4323,8 @@ static int characterEditorShowOptions()
             } else if (keyCode == 501 || keyCode == KEY_UPPERCASE_L || keyCode == KEY_LOWERCASE_L) {
                 // LOAD
                 string4[0] = '\0';
-                strcat(string4, "*.");
-                strcat(string4, "GCD");
+                stringAppend(string4, "*.");
+                stringAppend(string4, "GCD");
 
                 char** fileNameList;
                 int fileNameListLength = fileNameListInit(string4, &fileNameList);
@@ -4339,7 +4340,7 @@ static int characterEditorShowOptions()
 
                     if (loadFileDialogRc == 0) {
                         string4[0] = '\0';
-                        strcat(string4, string3);
+                        stringAppend(string4, string3);
 
                         int oldRemainingCharacterPoints = gCharacterEditorRemainingCharacterPoints;
 
@@ -4396,8 +4397,8 @@ static int characterEditorShowOptions()
                             soundPlayFile("iisxxxx1");
 
                             snprintf(string4, sizeof(string4), "%s", getmsg(&gCharacterEditorMessageList, &gCharacterEditorMessageListItem, 612));
-                            strcat(string4, string3);
-                            strcat(string4, "!");
+                            stringAppend(string4, string3);
+                            stringAppend(string4, "!");
 
                             showDialogBox(string4, nullptr, 0, 169, 126, COLOR_AMBER, nullptr, COLOR_AMBER, 0);
                         }
@@ -4418,8 +4419,8 @@ static int characterEditorShowOptions()
             } else if (keyCode == 500 || keyCode == KEY_UPPERCASE_S || keyCode == KEY_LOWERCASE_S) {
                 // SAVE
                 string4[0] = '\0';
-                strcat(string4, "*.");
-                strcat(string4, "GCD");
+                stringAppend(string4, "*.");
+                stringAppend(string4, "GCD");
 
                 char** fileNameList;
                 int fileNameListLength = fileNameListInit(string4, &fileNameList);
@@ -4428,11 +4429,11 @@ static int characterEditorShowOptions()
                     snprintf(string4, sizeof(string4), "%s", getmsg(&gCharacterEditorMessageList, &gCharacterEditorMessageListItem, 600));
 
                     if (showSaveFileDialog(string4, fileNameList, string1, fileNameListLength, 168, 80, 0) == 0) {
-                        strcat(string1, ".");
-                        strcat(string1, "GCD");
+                        stringAppend(string1, ".");
+                        stringAppend(string1, "GCD");
 
                         string4[0] = '\0';
-                        strcat(string4, string1);
+                        stringAppend(string4, string1);
 
                         bool shouldSave;
                         if (characterFileExists(string4)) {
@@ -4456,7 +4457,7 @@ static int characterEditorShowOptions()
         traitsSetSelected(gCharacterEditorTempTraits[0], gCharacterEditorTempTraits[1], gCharacterEditorTempTraits[2]);
 
                             string4[0] = '\0';
-                            strcat(string4, string1);
+                            stringAppend(string4, string1);
 
                             if (gcdSave(string4) != 0) {
                                 soundPlayFile("iisxxxx1");
@@ -4528,10 +4529,10 @@ static int characterEditorShowOptions()
     snprintf(title, sizeof(title), "%s", getmsg(&gCharacterEditorMessageList, &gCharacterEditorMessageListItem, 602));
 
     if (showSaveFileDialog(title, fileNames, fileName, filesCount, 168, 80, 0) == 0) {
-        strcat(fileName, ".TXT");
+        stringAppend(fileName, ".TXT");
 
         title[0] = '\0';
-        strcat(title, fileName);
+        stringAppend(title, fileName);
 
         int v42 = 0;
         if (characterFileExists(title)) {
@@ -4554,7 +4555,7 @@ static int characterEditorShowOptions()
 
         if (v42) {
             title[0] = '\0';
-            strcpy(title, fileName);
+            stringCopy(title, fileName);
 
             if (characterPrintToFile(title) != 0) {
                 soundPlayFile("iisxxxx1");
@@ -4609,8 +4610,8 @@ static int characterPrintToFile(const char* fileName)
     padding[0] = '\0';
     _AddSpaces(padding, (80 - static_cast<int>(strlen(title1))) / 2 - 2);
 
-    strcat(padding, title1);
-    strcat(padding, "\n");
+    stringAppend(padding, title1);
+    stringAppend(padding, "\n");
     fileWriteString(padding, stream);
 
     // VAULT-13 PERSONNEL RECORD
@@ -4620,8 +4621,8 @@ static int characterPrintToFile(const char* fileName)
     padding[0] = '\0';
     _AddSpaces(padding, (80 - static_cast<int>(strlen(title1))) / 2 - 2);
 
-    strcat(padding, title1);
-    strcat(padding, "\n");
+    stringAppend(padding, title1);
+    stringAppend(padding, "\n");
     fileWriteString(padding, stream);
 
     int month;
@@ -4640,8 +4641,8 @@ static int characterPrintToFile(const char* fileName)
     padding[0] = '\0';
     _AddSpaces(padding, (80 - static_cast<int>(strlen(title1))) / 2 - 2);
 
-    strcat(padding, title1);
-    strcat(padding, "\n");
+    stringAppend(padding, title1);
+    stringAppend(padding, "\n");
     fileWriteString(padding, stream);
 
     // Blank line
@@ -4659,7 +4660,7 @@ static int characterPrintToFile(const char* fileName)
         padding[0] = '\0';
         _AddSpaces(padding, paddingLength);
 
-        strcat(title1, padding);
+        stringAppend(title1, padding);
     }
 
     // Age
@@ -4692,7 +4693,7 @@ static int characterPrintToFile(const char* fileName)
         padding[0] = '\0';
         _AddSpaces(padding, paddingLength);
 
-        strcat(title1, padding);
+        stringAppend(title1, padding);
     }
 
     snprintf(title2, sizeof(title2),
@@ -5018,10 +5019,10 @@ static int characterPrintToFile(const char* fileName)
 
             _AddSpaces(title2, length);
 
-            strcat(title1, title2);
+            stringAppend(title1, title2);
         }
 
-        strcat(title1, "\n");
+        stringAppend(title1, "\n");
         fileWriteString(title1, stream);
     }
 
