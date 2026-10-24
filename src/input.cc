@@ -13,6 +13,7 @@
 #include "kb.h"
 #include "memory.h"
 #include "mouse.h"
+#include "movie.h"
 #include "sfall_kb_helpers.h"
 #include "sfall_script_hooks.h"
 #include "svga.h"
@@ -1059,6 +1060,10 @@ void _GNW95_process_message()
                 break;
             case SDL_WINDOWEVENT_FOCUS_GAINED:
                 gProgramIsActive = true;
+                // 79bdb28a: re-base the movie frame-sync clock, otherwise the
+                // wall time accumulated while unfocused is released as a burst
+                // of frames (sped-up playback after cmd-tab).
+                movieHandleFocusGained();
                 // Drop any button-down latch captured while unfocused so a
                 // stale tap cannot fire a click after refocus.
                 mouseDeviceResetSyntheticButtons();

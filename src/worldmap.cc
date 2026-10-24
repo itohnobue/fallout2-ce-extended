@@ -772,9 +772,6 @@ static void wmRefreshInterfaceDial(bool shouldRefreshWindow);
 static void wmInterfaceDialSyncTime(bool shouldRefreshWindow);
 static int wmAreaFindFirstValidMap(int* mapIdxPtr, int* elevationPtr, int* tilePtr, Rotation* rotationPtr);
 static void wmRunLocalMapEnterHook(int* mapIdxPtr);
-static void wmFadeOut();
-static void wmFadeIn();
-static void wmFadeReset();
 static void wmBlinkRndEncounterIcon(bool special);
 
 // 0x4BC860 can_rest_here
@@ -1178,7 +1175,6 @@ static bool townMapHotkeysFix;
 static double gameTimeIncRemainder = 0.0;
 static FrmImage _backgroundFrmImage;
 static FrmImage _townFrmImage;
-static bool wmFaded = false;
 static int wmForceEncounterMapId = -1;
 static EncounterFlag wmForceEncounterFlags = ENCOUNTER_FLAG_NONE;
 static bool wmEncounterDetectionEnabled = true;
@@ -4302,11 +4298,9 @@ static int wmWorldMapFunc(int a1)
     }
 
     if (wmInterfaceExit() == -1) {
-        wmFadeReset();
+        paletteSetEntries(_cmap);
         return -1;
     }
-
-    wmFadeIn();
 
     return rc;
 }
@@ -4404,7 +4398,9 @@ static int wmRndEncounterOccurred(int* mapToLoadPtr)
 
         // For unknown reason fadeout and blinking icon are mutually exclusive.
         if ((wmForceEncounterFlags & ENCOUNTER_FLAG_FADEOUT) != ENCOUNTER_FLAG_NONE) {
-            wmFadeOut();
+            // Match sfall: leave the encounter screen black on worldmap exit.
+            // Its script is responsible for the next fade in.
+            paletteFadeTo(gPaletteBlack);
         } else if ((wmForceEncounterFlags & ENCOUNTER_FLAG_NO_ICON) == ENCOUNTER_FLAG_NONE) {
             bool special = (wmForceEncounterFlags & ENCOUNTER_FLAG_ICON_SP) != ENCOUNTER_FLAG_NONE;
             wmBlinkRndEncounterIcon(special);
@@ -4417,12 +4413,8 @@ static int wmRndEncounterOccurred(int* mapToLoadPtr)
         switch (scriptHooks_Encounter(EncounterHookEventType::ForcedEncounter, &wmForceEncounterMapId, false, -1, -1)) {
         case EncounterHookResult::ContinueTravel: {
             // Hook cancelled the forced encounter — reset state and continue traveling.
-            bool didFadeOut = (wmForceEncounterFlags & ENCOUNTER_FLAG_FADEOUT) != 0;
             wmForceEncounterMapId = -1;
             wmForceEncounterFlags = ENCOUNTER_FLAG_NONE;
-            if (didFadeOut) {
-                wmFadeIn();
-            }
             // M-66: return 0 (not 1) so the caller (wmWorldMapFunc:3543) keeps
             // walking instead of breaking the while(true) worldmap loop and
             // exiting the screen. Matches the sibling RandomEncounter
@@ -8344,28 +8336,6 @@ int wmTeleportToArea(int areaIdx)
     wmGenData.isWalking = false;
 
     return 0;
-}
-
-void wmFadeOut()
-{
-    if (!wmFaded) {
-        paletteFadeTo(gPaletteBlack);
-        wmFaded = true;
-    }
-}
-
-void wmFadeIn()
-{
-    if (wmFaded) {
-        paletteFadeTo(_cmap);
-        wmFaded = false;
-    }
-}
-
-void wmFadeReset()
-{
-    wmFaded = false;
-    paletteSetEntries(_cmap);
 }
 
 void wmBlinkRndEncounterIcon(bool special)
