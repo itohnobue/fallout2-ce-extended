@@ -19,6 +19,9 @@ char* traitGetName(Trait trait);
 char* traitGetDescription(Trait trait);
 int traitGetFrmId(Trait trait);
 bool traitIsSelected(Trait trait);
+// Returns `true` if the trait is selected and still contributes its
+// hardcoded engine effects (PerksFile [Traits] NoHardcode=1 disables them).
+bool traitIsSelectedAndActive(Trait trait);
 int traitGetStatModifier(Stat stat);
 int traitGetSkillModifier(Skill skill);
 

@@ -5,6 +5,7 @@
 #include "display_monitor.h"
 #include "game.h"
 #include "game_sound.h"
+#include "inventory.h"
 #include "item.h"
 #include "map.h"
 #include "memory.h"
@@ -527,7 +528,16 @@ static int flareEventProcess(Object* obj, void* data)
     if (obj == nullptr) {
         return 1;
     }
+    Object* holder = objectGetOwner(obj);
+    bool wasHeld = (obj->flags & OBJECT_IN_ANY_HAND) != OBJECT_NONE;
+
     objectDestroy(obj);
+
+    // CE: Restore the holder's light once the burnt-out flare has left their hand.
+    if (wasHeld && holder != nullptr) {
+        critterRestoreLightWithoutFlare(holder);
+    }
+
     return 1;
 }
 

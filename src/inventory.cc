@@ -921,6 +921,42 @@ static void inventoryNormalClampStackOffset()
     }
 }
 
+static void inventoryClampOffset(int* offsetPtr, int inventoryLength, int visibleSlots)
+{
+    assert(offsetPtr != nullptr);
+
+    int maxOffset = inventoryComputeAlignedMaxOffset(inventoryLength, visibleSlots, 1);
+    if (*offsetPtr > maxOffset) {
+        *offsetPtr = maxOffset;
+    }
+    if (*offsetPtr < 0) {
+        *offsetPtr = 0;
+    }
+}
+
+// CE: Barter table offsets go stale when the table shrinks under them (e.g.
+// ammo stacks merging while weapons are unloaded on the table), leaving empty
+// slots whose buttons point at nothing.
+static void barterClampTableOffsets()
+{
+    if (gPlayerTableInventory != nullptr) {
+        inventoryClampOffset(&gPlayerTableOffset, gPlayerTableInventory->length, gInventorySlotsCount);
+    }
+
+    if (gBartererTableInventory != nullptr) {
+        inventoryClampOffset(&gBartererTableOffset, gBartererTableInventory->length, gInventorySlotsCount);
+    }
+}
+
+static InventoryItem* inventoryGetReversedSlot(Inventory* inventory, int index)
+{
+    if (inventory == nullptr || index < 0 || index >= inventory->length) {
+        return nullptr;
+    }
+
+    return &(inventory->items[inventory->length - (index + 1)]);
+}
+
 static int inventoryLootGetSlotX(bool targetInventory, int slotIndex)
 {
     int scrollerX = targetInventory ? inventoryLootLayout.rightScrollerX : inventoryLootLayout.leftScrollerX;
@@ -3982,25 +4018,7 @@ int inventoryEquipFunc(Object* critter, Object* item, Hand handIndex, bool anima
             equippedItem->flags &= ~OBJECT_IN_ANY_HAND;
 
             if (equippedItem->pid == PROTO_ID_LIT_FLARE) {
-                int lightIntensity;
-                int lightDistance;
-                if (critter == gDude) {
-                    lightIntensity = LIGHT_INTENSITY_MAX;
-                    lightDistance = 4;
-                } else {
-                    Proto* proto;
-                    if (protoGetProto(critter->pid, &proto) == -1) {
-                        if (animate && !isoIsDisabled()) {
-                            reg_anim_end();
-                        }
-                        return -1;
-                    }
-
-                    lightDistance = proto->lightDistance;
-                    lightIntensity = proto->lightIntensity;
-                }
-
-                objectSetLight(critter, lightDistance, lightIntensity, &rect);
+                critterRestoreLightWithoutFlare(critter);
             }
         }
 
@@ -4084,6 +4102,40 @@ int inventoryUnequip(Object* critter_obj, Hand hand)
     return inventoryUnequipFunc(critter_obj, hand, true);
 }
 
+// CE: Restore a critter's own light unless a lit flare is still in either hand.
+void critterRestoreLightWithoutFlare(Object* critter)
+{
+    Object* leftHandItem = critterGetItem1(critter);
+    if (leftHandItem != nullptr && leftHandItem->pid == PROTO_ID_LIT_FLARE) {
+        return;
+    }
+
+    Object* rightHandItem = critterGetItem2(critter);
+    if (rightHandItem != nullptr && rightHandItem->pid == PROTO_ID_LIT_FLARE) {
+        return;
+    }
+
+    int lightDistance;
+    int lightIntensity;
+    if (critter == gDude) {
+        lightDistance = 4;
+        lightIntensity = LIGHT_INTENSITY_MAX;
+    } else {
+        Proto* proto;
+        if (protoGetProto(critter->pid, &proto) == -1) {
+            return;
+        }
+
+        lightDistance = proto->lightDistance;
+        lightIntensity = proto->lightIntensity;
+    }
+
+    Rect rect;
+    if (objectSetLight(critter, lightDistance, lightIntensity, &rect) == 0) {
+        tileWindowRefreshRect(&rect, critter->elevation);
+    }
+}
+
 // 0x472A64
 int inventoryUnequipFunc(Object* critter, Hand hand, bool animate)
 {
@@ -4112,6 +4164,11 @@ int inventoryUnequipFunc(Object* critter, Hand hand, bool animate)
 
     if (item) {
         item->flags &= ~OBJECT_IN_ANY_HAND;
+
+        // CE: Restore light when unwielding a lit flare.
+        if (item->pid == PROTO_ID_LIT_FLARE) {
+            critterRestoreLightWithoutFlare(critter);
+        }
     }
 
     if (activeHand == hand && (weaponAnimationFromFid(critter->fid) != WEAPON_ANIMATION_NONE)) {
@@ -5499,8 +5556,12 @@ static int barterAttemptTransaction(Object* dude, Object* offerTable, Object* np
 {
     MessageListItem messageListItem;
 
+    // SFALL: Fix for being unable to sell/give items in the barter screen when
+    // the player/party member is overloaded: a table that weighs nothing (the
+    // player or the party member takes nothing) always fits.
     int weightAvailable = critterGetStat(dude, STAT_CARRY_WEIGHT) - objectGetInventoryWeight(dude);
-    if (objectGetInventoryWeight(barterTable) > weightAvailable) {
+    int barterTableWeight = objectGetInventoryWeight(barterTable);
+    if (barterTableWeight != 0 && barterTableWeight > weightAvailable) {
         // Sorry, you cannot carry that much.
         messageListItem.num = 31;
         if (messageListGetItem(&gInventoryMessageList, &messageListItem)) {
@@ -5511,10 +5572,11 @@ static int barterAttemptTransaction(Object* dude, Object* offerTable, Object* np
 
     if (gGameDialogSpeakerIsPartyMember) {
         int npcWeightAvailable = critterGetStat(npc, STAT_CARRY_WEIGHT) - objectGetInventoryWeight(npc);
-        if (objectGetInventoryWeight(offerTable) > npcWeightAvailable) {
+        int offerTableWeight = objectGetInventoryWeight(offerTable);
+        if (offerTableWeight != 0 && offerTableWeight > npcWeightAvailable) {
             // Sorry, that's too much to carry.
             debugPrint("[BARTER] refuse: npc overweight (offerTable %d > available %d)\n",
-                objectGetInventoryWeight(offerTable), npcWeightAvailable);
+                offerTableWeight, npcWeightAvailable);
             messageListItem.num = 32;
             if (messageListGetItem(&gInventoryMessageList, &messageListItem)) {
                 gameDialogRenderSupplementaryMessage(messageListItem.text);
@@ -5827,6 +5889,8 @@ static void barterMoveFromTable(Object* item, int quantity, int slotIndex, Objec
 // 0x475334 display_table_inventories
 static void barterDisplayTables(int win, Object* leftTable, Object* rightTable, int draggedSlotIndex)
 {
+    barterClampTableOffsets();
+
     unsigned char* windowBuffer = windowGetBuffer(gInventoryWindow);
 
     int oldFont = fontGetCurrent();
@@ -6035,6 +6099,7 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
 
         keyCode = inputGetInput();
         int mouseEvent = mouseGetEvent();
+        barterClampTableOffsets();
         InventoryScrollerDisplayContext inventoryScrollerContext { INVENTORY_WINDOW_TYPE_TRADE, nullptr };
         InventoryScrollerDisplayContext targetScrollerContext { INVENTORY_WINDOW_TYPE_TRADE, _target_pud };
         InventoryScrollerBarterContext barterScrollerContext { win, playerTable, bartererTable };
@@ -6227,8 +6292,9 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
                         barterDisplayTables(win, playerTable, nullptr, -1);
                     } else {
                         int slotIndex = keyCode - 2300;
-                        if (slotIndex + gPlayerTableOffset < gPlayerTableInventory->length) {
-                            InventoryItem* inventoryItem = &(gPlayerTableInventory->items[gPlayerTableInventory->length - (slotIndex + gPlayerTableOffset + 1)]);
+                        int tableIndex = slotIndex + gPlayerTableOffset;
+                        InventoryItem* inventoryItem = inventoryGetReversedSlot(gPlayerTableInventory, tableIndex);
+                        if (inventoryItem != nullptr) {
                             barterMoveFromTable(inventoryItem->item, inventoryItem->quantity, slotIndex, barterer, playerTable, true, &playerTableSources);
                             _display_target_inventory(_target_stack_offset[_target_curr_stack], -1, _target_pud, INVENTORY_WINDOW_TYPE_TRADE);
                             _display_inventory(_stack_offset[_curr_stack], -1, INVENTORY_WINDOW_TYPE_TRADE);
@@ -6244,8 +6310,9 @@ void barterProcessUI(int win, Object* barterer, Object* playerTable, Object* bar
                         barterDisplayTables(win, nullptr, bartererTable, -1);
                     } else {
                         int slotIndex = keyCode - 2400;
-                        if (slotIndex + gBartererTableOffset < gBartererTableInventory->length) {
-                            InventoryItem* inventoryItem = &(gBartererTableInventory->items[gBartererTableInventory->length - (slotIndex + gBartererTableOffset + 1)]);
+                        int tableIndex = slotIndex + gBartererTableOffset;
+                        InventoryItem* inventoryItem = inventoryGetReversedSlot(gBartererTableInventory, tableIndex);
+                        if (inventoryItem != nullptr) {
                             barterMoveFromTable(inventoryItem->item, inventoryItem->quantity, slotIndex, barterer, bartererTable, false, &playerTableSources);
                             _display_target_inventory(_target_stack_offset[_target_curr_stack], -1, _target_pud, INVENTORY_WINDOW_TYPE_TRADE);
                             _display_inventory(_stack_offset[_curr_stack], -1, INVENTORY_WINDOW_TYPE_TRADE);
@@ -6963,6 +7030,11 @@ int inventoryUnwieldSlot(Object* critter, InvenSlot slot)
             if (itemAdd(critter, item, 1) != 0) {
                 // item will be in an invalid state, but this can only happen on malloc failure
                 return -1;
+            }
+
+            // CE: This branch bypasses inventoryUnequipFunc(), so restore light here too.
+            if (item->pid == PROTO_ID_LIT_FLARE) {
+                critterRestoreLightWithoutFlare(critter);
             }
 
             update = true;

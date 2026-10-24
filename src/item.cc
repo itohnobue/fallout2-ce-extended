@@ -1890,7 +1890,7 @@ int weaponGetActionPointCost(Object* critter, HitMode hitMode, bool aiming)
     // handler is registered. When the script layer is active it owns the
     // melee-class adjustment, so skipping the engine's reduction there
     // yields sfall's total (-1 for all weapons) on CE + et tu.
-    if (critter == gDude && traitIsSelected(TRAIT_FAST_SHOT)) {
+    if (critter == gDude && traitIsSelectedAndActive(TRAIT_FAST_SHOT)) {
         if (gFastShotFix >= 2) {
             // Modes 2/3: -1 AP for all weapon attacks. HtH (no weapon item)
             // is excluded in every mode (sfall mode 3: item && fastShotTweak > 2).
@@ -2067,7 +2067,7 @@ char weaponGetSoundId(Object* weapon)
 // 0x478E5C
 bool critterCanAim(Object* critter, HitMode hitMode)
 {
-    if (critter == gDude && traitIsSelected(TRAIT_FAST_SHOT)) {
+    if (critter == gDude && traitIsSelectedAndActive(TRAIT_FAST_SHOT)) {
         // Fast Shot blocks called shots, EXCEPT in FastShotFix mode 1
         // (Haenlomal's tweak): sfall's item_w_called_shot_hack allows aimed
         // attacks for melee/unarmed/HtH attacks (weapon subtype < THROWING or
@@ -3004,7 +3004,7 @@ static int _insert_drug_effect(Object* critter, Object* item, int duration, Stat
 
     int delay = 600 * duration;
     if (critter == gDude) {
-        if (traitIsSelected(TRAIT_CHEM_RESISTANT)) {
+        if (traitIsSelectedAndActive(TRAIT_CHEM_RESISTANT)) {
             delay /= 2;
         }
     }
@@ -3234,11 +3234,11 @@ UseItemResultCode drugItemTakeDrug(Object* critter, Object* item)
     if (!dudeIsAddicted(item->pid)) {
         // addictionChance is already set above with override support.
         if (critter == gDude) {
-            if (traitIsSelected(TRAIT_CHEM_RELIANT)) {
+            if (traitIsSelectedAndActive(TRAIT_CHEM_RELIANT)) {
                 addictionChance *= 2;
             }
 
-            if (traitIsSelected(TRAIT_CHEM_RESISTANT)) {
+            if (traitIsSelectedAndActive(TRAIT_CHEM_RESISTANT)) {
                 addictionChance /= 2;
             }
 
@@ -3527,7 +3527,7 @@ static void performWithdrawalStart(Object* obj, Perk perk, int pid)
 
     int duration = 10080;
     if (obj == gDude) {
-        if (traitIsSelected(TRAIT_CHEM_RELIANT)) {
+        if (traitIsSelectedAndActive(TRAIT_CHEM_RELIANT)) {
             duration /= 2;
         }
 

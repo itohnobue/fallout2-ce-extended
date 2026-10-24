@@ -223,6 +223,17 @@ bool traitIsSelected(Trait trait)
     return false;
 }
 
+// Returns `true` if the specified trait is selected and still contributes its
+// hardcoded engine effects. A trait flagged NoHardcode=1 in the PerksFile
+// [Traits] section contributes only its configured StatMod/SkillMod pairs, so
+// every hardcoded effect outside trait_adjust_stat/trait_adjust_skill (level-up
+// skill points and perk progression, combat, drug and critical-hit effects)
+// must test this predicate rather than traitIsSelected().
+bool traitIsSelectedAndActive(Trait trait)
+{
+    return traitIsValid(trait) && traitIsSelected(trait) && !traitTweakHasNoHardcode(trait);
+}
+
 // Returns stat modifier depending on selected traits.
 //
 // 0x4B3C7C trait_adjust_stat

@@ -40,6 +40,7 @@ void inventoryOpenUseItemOn(Object* targetObj);
 Object* critterGetItem2(Object* critter);
 Object* critterGetItem1(Object* critter);
 Object* critterGetArmor(Object* critter);
+void critterRestoreLightWithoutFlare(Object* critter);
 
 struct CritterEquipped {
     Object* leftHand = nullptr;

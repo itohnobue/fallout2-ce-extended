@@ -6091,9 +6091,9 @@ static int characterEditorUpdateLevel()
             sp += 5;
             sp += critterGetBaseStatWithTraitModifier(gDude, STAT_INTELLIGENCE) * 2;
             sp += perkGetRank(gDude, PERK_EDUCATED) * gPerkTweak.educatedBonus;
-            sp += traitIsSelected(TRAIT_SKILLED) * 5;
+            sp += traitIsSelectedAndActive(TRAIT_SKILLED) * 5;
             sp += gSkillPointsPerLevelMod;
-            if (traitIsSelected(TRAIT_GIFTED)) {
+            if (traitIsSelectedAndActive(TRAIT_GIFTED)) {
                 sp -= 5;
                 if (sp < 0) {
                     sp = 0;
@@ -6126,7 +6126,7 @@ static int characterEditorUpdateLevel()
                     progression = gPerkFrequencyOverride;
                 } else {
                     progression = 3;
-                    if (traitIsSelected(TRAIT_SKILLED)) {
+                    if (traitIsSelectedAndActive(TRAIT_SKILLED)) {
                         progression += 1;
                     }
                 }

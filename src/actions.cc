@@ -17,6 +17,7 @@
 #include "game_sound.h"
 #include "geometry.h"
 #include "interface.h"
+#include "inventory.h"
 #include "item.h"
 #include "map.h"
 #include "memory.h"
@@ -224,7 +225,7 @@ AnimationType pickDeathAnim(Object* attacker, Object* defender, Object* weapon, 
     }
 
     bool hasBloodyMess = false;
-    if (attacker == gDude && traitIsSelected(TRAIT_BLOODY_MESS)) {
+    if (attacker == gDude && traitIsSelectedAndActive(TRAIT_BLOODY_MESS)) {
         hasBloodyMess = true;
     }
 
@@ -778,6 +779,8 @@ int _action_ranged(Attack* attack, AnimationType anim)
                     projectile = weapon;
                     weaponFid = weapon->fid;
                     ObjectFlags weaponFlags = weapon->flags;
+                    // CE: Read before _cAIPrepWeaponItem() lights an unlit flare.
+                    int weaponPid = weapon->pid;
 
                     InterfaceItemAction leftItemAction;
                     InterfaceItemAction rightItemAction;
@@ -787,6 +790,11 @@ int _action_ranged(Attack* attack, AnimationType anim)
                     replacedWeapon = itemReplace(attack->attacker, weapon, weaponFlags & OBJECT_IN_ANY_HAND);
                     objectSetFid(projectile, projectileProto->fid, nullptr);
                     _cAIPrepWeaponItem(attack->attacker, weapon);
+
+                    // CE: Restore the thrower's light after throwing a held lit flare.
+                    if (weaponPid == PROTO_ID_LIT_FLARE && (weaponFlags & OBJECT_IN_ANY_HAND) != OBJECT_NONE) {
+                        critterRestoreLightWithoutFlare(attack->attacker);
+                    }
 
                     if (attack->attacker == gDude) {
                         if (replacedWeapon == nullptr) {

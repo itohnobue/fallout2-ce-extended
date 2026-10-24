@@ -4598,7 +4598,7 @@ static int attackCompute(Attack* attack)
     }
 
     if (roll == ROLL_FAILURE) {
-        if (traitIsSelected(TRAIT_JINXED) || perkHasRank(gDude, PERK_JINXED)) {
+        if (traitIsSelectedAndActive(TRAIT_JINXED) || perkHasRank(gDude, PERK_JINXED)) {
             if (randomBetween(0, 1) == 1) {
                 roll = ROLL_CRITICAL_FAILURE;
             }
@@ -5226,7 +5226,7 @@ static int attackDetermineToHit(Object* attacker, int tile, Object* defender, Hi
             toHit -= 10 * numCrittersInLof;
         }
 
-        if (attacker == gDude && traitIsSelected(TRAIT_ONE_HANDER)) {
+        if (attacker == gDude && traitIsSelectedAndActive(TRAIT_ONE_HANDER)) {
             if (weaponIsTwoHanded(weapon)) {
                 toHit -= 40;
             } else {
@@ -5432,7 +5432,7 @@ static void attackComputeDamage(Attack* attack, int numRounds, int baseDamageMul
             damageThreshold = 20 * damageThreshold / 100;
         }
 
-        if (attack->attacker == gDude && traitIsSelected(TRAIT_FINESSE)) {
+        if (attack->attacker == gDude && traitIsSelectedAndActive(TRAIT_FINESSE)) {
             damageResistance += 30;
         }
     }
