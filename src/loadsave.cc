@@ -33,6 +33,7 @@
 #include "item.h"
 #include "light.h"
 #include "kb.h"
+#include "mainmenu.h"
 #include "map.h"
 #include "memory.h"
 #include "message.h"
@@ -225,6 +226,7 @@ static int lsgLoadGameInSlot(int slot);
 static int lsgSaveHeaderInSlot(int slot);
 static int lsgLoadHeaderInSlot(int slot);
 static int _GetSlotList();
+static void loadSaveLoadSlotPage(int page);
 static void _ShowSlotList(int windowType);
 static void _DrawInfoBox(int slot);
 static int _LoadTumbSlot(int slot);
@@ -417,6 +419,9 @@ static LoadSaveSlotData _LSData[kMaxSaveTotalSlots];
 
 // 0x614280 LSstatus
 static int _LSstatus[kMaxSaveTotalSlots];
+
+// Which pages of the slot list have already been scanned by _GetSlotList.
+static bool gLoadSaveSlotPageLoaded[kMaxSaveTotalSlots / slotsPerPage];
 
 // 0x6142A8 thumbnail_image
 static unsigned char* _thumbnail_image;
@@ -1295,8 +1300,7 @@ int lsgLoadGame(int mode)
         windowRefresh(gLoadSaveWindow);
         renderPresent();
         if (mode == LOAD_SAVE_MODE_FROM_MAIN_MENU) {
-            colorPaletteLoad("color.pal");
-            paletteFadeTo(_cmap);
+            mainMenuShowSubscreen(true);
         }
         soundPlayFile("iisxxxx1");
         strcpy(_str0, getmsg(&gLoadSaveMessageList, &gLoadSaveMessageListItem, 106));
@@ -1313,6 +1317,7 @@ int lsgLoadGame(int mode)
         if (devAutoloadSlot >= 0 && devAutoloadSlot < saveLoadTotalSlots) {
             _slot_cursor = devAutoloadSlot;
             _currentSlotPage = devAutoloadSlot / slotsPerPage;
+            loadSaveLoadSlotPage(_currentSlotPage);
             if (_LSstatus[_slot_cursor] == SLOT_STATE_OCCUPIED) {
                 devAutoloadPending = true;
             } else {
@@ -1350,8 +1355,7 @@ int lsgLoadGame(int mode)
     windowRefresh(gLoadSaveWindow);
     renderPresent();
     if (mode == LOAD_SAVE_MODE_FROM_MAIN_MENU) {
-        colorPaletteLoad("color.pal");
-        paletteFadeTo(_cmap);
+        mainMenuShowSubscreen(true);
     }
     _dbleclkcntr = 24;
 
@@ -1700,7 +1704,7 @@ int lsgLoadGame(int mode)
     }
 
     if (mode == LOAD_SAVE_MODE_FROM_MAIN_MENU && rc == 0) {
-        paletteFadeTo(gPaletteBlack);
+        mainMenuFadeOutForMenuReturn(true);
     }
 
     lsgWindowFree(mode == LOAD_SAVE_MODE_FROM_MAIN_MENU
@@ -2852,8 +2856,28 @@ static int lsgLoadHeaderInSlot(int slot)
 // 0x47E5D0
 static int _GetSlotList()
 {
-    int index = 0;
-    for (; index < saveLoadTotalSlots; index += 1) {
+    std::fill_n(gLoadSaveSlotPageLoaded, kMaxSaveTotalSlots / slotsPerPage, false);
+    loadSaveLoadSlotPage(_currentSlotPage);
+    return slotsPerPage;
+}
+
+// Scans one page of the slot list. Upstream scans every slot at once; with the
+// fork's 1000 reachable slots (gExtraSaveSlots) that is 1000 file probes on
+// every save/load window entry, so the scan is done per displayed page.
+static void loadSaveLoadSlotPage(int page)
+{
+    assert(page >= 0 && page < saveLoadPages);
+    assert(page * slotsPerPage < kMaxSaveTotalSlots);
+
+    if (gLoadSaveSlotPageLoaded[page]) {
+        return;
+    }
+
+    gLoadSaveSlotPageLoaded[page] = true;
+
+    int startIndex = page * slotsPerPage;
+    int endIndex = std::min(startIndex + slotsPerPage, saveLoadTotalSlots);
+    for (int index = startIndex; index < endIndex; index++) {
         snprintf(_str, sizeof(_str), "%s\\%s%.2d\\%s", "SAVEGAME", "SLOT", index + 1, "SAVE.DAT");
 
         int fileSize;
@@ -2864,7 +2888,9 @@ static int _GetSlotList()
 
             if (_flptr == nullptr) {
                 debugPrint("\nLOADSAVE: ** Error opening save  game for reading! **\n");
-                return -1;
+                // One unreadable slot must not abort the whole window.
+                _LSstatus[index] = SLOT_STATE_ERROR;
+                continue;
             }
 
             if (lsgLoadHeaderInSlot(index) == -1) {
@@ -2882,13 +2908,14 @@ static int _GetSlotList()
             fileClose(_flptr);
         }
     }
-    return index;
 }
 
 // 0x47E6D8
 
 static void _ShowSlotList(int windowType)
 {
+    loadSaveLoadSlotPage(_currentSlotPage);
+
     // Clear display area
     bufferFill(gLoadSaveWindowBuffer + LS_WINDOW_WIDTH * 87 + 55, 230, 353, LS_WINDOW_WIDTH, gLoadSaveWindowBuffer[LS_WINDOW_WIDTH * 86 + 55] & 0xFF);
 

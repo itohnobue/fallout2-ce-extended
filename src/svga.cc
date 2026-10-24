@@ -406,7 +406,10 @@ void handleWindowSizeChanged()
 {
     movieHandleRendererReset();
     destroyRenderer();
-    createRenderer(screenGetWidth(), screenGetHeight());
+    if (createRenderer(screenGetWidth(), screenGetHeight())) {
+        // Repaint the newly created texture surface, just as on a window expose.
+        windowRefreshAll(&_scr_size);
+    }
     mouseDeviceRefreshWindowMapping();
 }
 
