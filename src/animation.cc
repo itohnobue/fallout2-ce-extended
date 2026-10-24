@@ -2728,6 +2728,14 @@ static void _object_move(int index)
                 nextTile = -1;
             } else {
                 objectUseDoor(object, obstacle, 0);
+                // SFALL: Terminate the move when the door has not flushed its
+                // open state yet, instead of re-issuing its use_p_proc every
+                // tick while the walk waits (upstream #740).
+                if (sad->step == ANIM_COMPLETE
+                    || (!isInCombat() && (obstacle->data.scenery.door.openFlags & 0x01) == 0)) {
+                    sad->step = ANIM_COMPLETE;
+                    nextTile = -1;
+                }
             }
         }
 
