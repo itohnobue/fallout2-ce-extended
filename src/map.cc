@@ -1293,10 +1293,12 @@ int mapLoadSaved(char* fileName)
             objectUnjamAll();
         }
 
-    if (_map_age_dead_critters() == -1) {
-        debugPrint("\nError: Critter aging failed on map load!");
-        return -1;
-    }
+        // NOTE: The original fails the load here, and `mapLoadByName` loads
+        // the .MAP instead: the map as new. The saved map loads, the bodies
+        // the aging couldn't replace stay for the next visit.
+        if (_map_age_dead_critters() == -1) {
+            debugPrint("\nError: Critter aging failed on map load!");
+        }
     }
 
     if (!wmMapIsSaveable()) {
@@ -1318,9 +1320,10 @@ int mapLoadSaved(char* fileName)
 // 0x48328C
 static int _map_age_dead_critters()
 {
-    if (!wmMapDeadBodiesAge()) {
-        return 0;
-    }
+    // SFALL: Fix for critters not being healed over time when entering a map
+    // with 'dead_bodies_age=No' set in maps.txt: the setting keeps the dead
+    // bodies, the living critters still heal (see below).
+    bool deadBodiesAge = wmMapDeadBodiesAge();
 
     int hoursSinceLastVisit = (gameTimeGetTime() - gMapHeader.lastVisitTime) / GAME_TIME_TICKS_PER_HOUR;
     if (hoursSinceLastVisit == 0) {
@@ -1339,6 +1342,10 @@ static int _map_age_dead_critters()
             }
         }
         obj = objectFindNext();
+    }
+
+    if (!deadBodiesAge) {
+        return 0;
     }
 
     int agingType;
@@ -1441,7 +1448,13 @@ static int replaceDeadCritter(Object* critter)
         }
     }
 
-    return objectSetFrame(blood, frame, nullptr);
+    // NOTE: The original (0x483545) ignores obj_set_frame's result. A multihex
+    // body's frame (6 to 9) can be past the stain art's last one (8), then the
+    // stain keeps its first frame. Failing here failed the critter aging, and
+    // with it the saved map's load: the map was loaded as new.
+    objectSetFrame(blood, frame, nullptr);
+
+    return 0;
 }
 
 // 0x48358C

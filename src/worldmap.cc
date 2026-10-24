@@ -741,6 +741,7 @@ static int wmMarkSubTileOffsetVisited(int tile, int subtileX, int subtileY, int 
 static int wmMarkSubTileOffsetKnown(int tile, int subtileX, int subtileY, int offsetX, int offsetY);
 static int wmMarkSubTileOffsetVisitedFunc(int tile, int subtileX, int subtileY, int offsetX, int offsetY, SubtileState subtileState);
 static void wmMarkSubTileRadiusVisited(int x, int y);
+static void wmAreaGetMarkWorldPos(CityInfo* city, int* xPtr, int* yPtr);
 static int wmTileGrabArt(int tileIdx);
 static int wmInterfaceRefresh();
 static void wmInterfaceRefreshDate(bool shouldRefreshWindow);
@@ -1326,10 +1327,10 @@ int wmWorldMap_init()
         gWorldMapDelay2 = 150;
     }
 
-    // CE: City size fids should be initialized during startup. They are used
-    // during |wmTeleportToArea| to calculate worldmap position when jumping
-    // from Temple to Arroyo - before giving a chance to |wmInterfaceInit| to
-    // initialize it.
+    // CE: City size fids should be initialized during startup — they are the
+    // only assignment of `wmSphereData[].fid`, which |wmInterfaceInit| locks to
+    // load the circle art. The worldmap position no longer depends on these
+    // images (see `wmAreaGetMarkWorldPos`).
     for (CitySize citySize = CITY_SIZE_FIRST; citySize < CITY_SIZE_COUNT; citySize++) {
         CitySizeDescription* citySizeDescription = &(wmSphereData[citySize]);
         citySizeDescription->fid = buildFid(OBJ_TYPE_INTERFACE, 336 + citySize);
@@ -6346,6 +6347,44 @@ static void wmMarkSubTileRadiusVisited(int x, int y)
     wmSubTileMarkRadiusVisited(x, y, radius);
 }
 
+// Returns the worldmap position of an area's mark (the centre of its circle),
+// compensated for the worldmap viewport offset the same way the walking code
+// expects it (see `wmWorldMapFunc`).
+//
+// `city->size` selects the circle's half-size: the small and medium circles are
+// 14x12 and 24x22 pixels, the large one 44x42, so their halves are the values
+// below. Negative results are clamped to zero for areas close to the map edge.
+static void wmAreaGetMarkWorldPos(CityInfo* city, int* xPtr, int* yPtr)
+{
+    assert(city != nullptr);
+    assert(xPtr != nullptr);
+    assert(yPtr != nullptr);
+
+    int markHalfWidth = WM_VIEW_X;
+    int markHalfHeight = WM_VIEW_Y;
+
+    switch (city->size) {
+    case CITY_SIZE_SMALL:
+        markHalfWidth = 7;
+        markHalfHeight = 6;
+        break;
+    case CITY_SIZE_MEDIUM:
+        markHalfWidth = 12;
+        markHalfHeight = 11;
+        break;
+    case CITY_SIZE_LARGE:
+        break;
+    default:
+        break;
+    }
+
+    int x = city->x + markHalfWidth - WM_VIEW_X;
+    int y = city->y + markHalfHeight - WM_VIEW_Y;
+
+    *xPtr = std::max(x, 0);
+    *yPtr = std::max(y, 0);
+}
+
 // 0x4C35A8 wmSubTileMarkRadiusVisited
 int wmSubTileMarkRadiusVisited(int x, int y, int radius)
 {
@@ -7222,19 +7261,45 @@ bool wmAreaMarkVisitedState(int areaIdx, int state)
 
     CityInfo* city = &(wmAreaInfoList[areaIdx]);
     int oldVisitedState = city->visitedState;
-    if (city->state == CITY_STATE_KNOWN && state != 0) {
+
+    // ad91699f (#720): state 3 is FO1's "known, reveal nothing" (upstream's
+    // `KnownFo1` visited state) — 59 shipped Et Tu scripts call
+    // `mark_area_known(0, area, 3)`. Passed through as an ordinary non-zero
+    // state it reached the visited-radius marker below and revealed a 3x3
+    // (5x5 with Scout) fog block plus its fill lines for an area the player had
+    // only heard about. Fold it to Known and skip the radius; the centre
+    // subtile is still upgraded, which is the map state the FO1 call expects.
+    bool noRadius = state == 3;
+    if (noRadius) {
+        state = 1;
+    }
+
+    if (city->state == CITY_STATE_KNOWN && state != 0 && !noRadius) {
         wmMarkSubTileRadiusVisited(city->x, city->y);
     }
 
     city->visitedState = state;
 
     SubtileInfo* subtile;
-    if (wmFindCurSubTileFromPos(city->x, city->y, &subtile) == -1) {
+    int markX = city->x;
+    int markY = city->y;
+    if (noRadius) {
+        // ad91699f (#720): the FO1 mark is resolved at the circle's centre, not
+        // at `city->x/y`, which is the circle's top-left corner.
+        wmAreaGetMarkWorldPos(city, &markX, &markY);
+    }
+
+    if (wmFindCurSubTileFromPos(markX, markY, &subtile) == -1) {
         return false;
     }
 
     if (state == 1) {
-        subtile->state = SUBTILE_STATE_KNOWN;
+        // ad91699f (#720): a "no radius" mark must not downgrade a subtile the
+        // player has already seen (upstream's `oldSubtileState` preservation,
+        // expressed against the fork's int state).
+        subtile->state = (noRadius && subtile->state != SUBTILE_STATE_UNKNOWN)
+            ? subtile->state
+            : SUBTILE_STATE_KNOWN;
     } else if (state == 2 && oldVisitedState == 0) {
         city->visitedState = 1;
     }
@@ -8260,31 +8325,23 @@ int wmTeleportToArea(int areaIdx)
         return -1;
     }
 
+    // SFALL: Fix for incorrect positioning after exiting small/medium
+    // locations.
+    // CE: See `wmWorldMapFunc` for explanation.
+    //
+    // 4963b847 (#812): only teleport the marker when the area actually changes.
+    // Re-centring on every transition — including transitions between maps of
+    // the area the party is already in — discarded the world position the party
+    // had walked to.
+    if (wmGenData.currentAreaId != areaIdx) {
+        CityInfo* city = &(wmAreaInfoList[areaIdx]);
+        wmAreaGetMarkWorldPos(city, &(wmGenData.worldPosX), &(wmGenData.worldPosY));
+    }
+
     wmGenData.currentAreaId = areaIdx;
     wmGenData.walkDestinationX = 0;
     wmGenData.walkDestinationY = 0;
     wmGenData.isWalking = false;
-
-    CityInfo* city = &(wmAreaInfoList[areaIdx]);
-
-    // SFALL: Fix for incorrect positioning after exiting small/medium
-    // locations.
-    // CE: See `wmWorldMapFunc` for explanation.
-    CitySizeDescription* citySizeDescription = &(wmSphereData[city->size]);
-
-    // CE: This function might be called outside |wmWorldmapFunc|, so it's
-    // image might not be locked.
-    bool wasLocked = citySizeDescription->frmImage.isLocked();
-    if (!wasLocked) {
-        citySizeDescription->frmImage.lock(citySizeDescription->fid);
-    }
-
-    wmGenData.worldPosX = city->x + citySizeDescription->frmImage.getWidth() / 2 - WM_VIEW_X;
-    wmGenData.worldPosY = city->y + citySizeDescription->frmImage.getHeight() / 2 - WM_VIEW_Y;
-
-    if (!wasLocked) {
-        citySizeDescription->frmImage.unlock();
-    }
 
     return 0;
 }
