@@ -1099,6 +1099,8 @@ int showSaveFileDialog(char* title, char** fileList, char* dest, int fileListLen
         if (fileNameLength >= 12) {
             break;
         }
+
+        pch++;
     }
     dest[fileNameLength] = '\0';
 

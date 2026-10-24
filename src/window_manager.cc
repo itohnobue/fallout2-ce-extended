@@ -2452,8 +2452,9 @@ int buttonDisable(int btn)
         if (button == window->hoveredButton) {
             if (window->hoveredButton->mouseExitEventCode != -1) {
                 enqueueInputEvent(window->hoveredButton->mouseExitEventCode);
-                window->hoveredButton = nullptr;
             }
+
+            window->hoveredButton = nullptr;
         }
     }
 

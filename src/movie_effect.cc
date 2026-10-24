@@ -142,6 +142,10 @@ int movieEffectsLoad(const char* filePath)
         goto out;
     }
 
+    if (movieEffectsLength <= 0) {
+        goto out;
+    }
+
     movieEffectFrameList = (int*)internal_malloc(sizeof(*movieEffectFrameList) * movieEffectsLength);
     if (movieEffectFrameList == nullptr) {
         goto out;
