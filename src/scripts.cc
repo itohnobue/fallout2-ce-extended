@@ -25,6 +25,7 @@
 #include "game_dialog.h"
 #include "game_mouse.h"
 #include "game_movie.h"
+#include "game_sound.h"
 #include "input.h"
 #include "map.h"
 #include "map_defs.h"
@@ -32,6 +33,7 @@
 #include "message.h"
 #include "object.h"
 #include "party_member.h"
+#include "pipboy.h"
 #include "platform_compat.h"
 #include "proto.h"
 #include "proto_instance.h"
@@ -3441,9 +3443,11 @@ char* _scr_get_msg_str_speech(int messageListId, int messageId, int shouldStartS
         return nullptr;
     }
 
-    if (objectTypeFromFid(gGameDialogHeadFid) != OBJ_TYPE_HEAD) {
-        shouldStartSpeech = 0;
-    }
+    // CE FIX: The head-fid test used to force `shouldStartSpeech` to 0 here,
+    // silently dropping audio for any call made outside an active gdialog
+    // session (float_msg, combat, timed_event_p_proc, etc). A head fid only
+    // matters for lip-sync, not for whether we should play audio at all, so
+    // below it only picks lip-sync vs. plain playback.
 
     MessageListItem messageListItem;
     messageListItem.num = messageId;
@@ -3452,16 +3456,18 @@ char* _scr_get_msg_str_speech(int messageListId, int messageId, int shouldStartS
         return gErrorString;
     }
 
-    if (shouldStartSpeech) {
-        if (_gdialogActive()) {
-            if (messageListItem.audio != nullptr && messageListItem.audio[0] != '\0') {
-                if (messageListItem.flags & 0x01) {
-                    gameDialogStartLips(nullptr);
-                } else {
-                    gameDialogStartLips(messageListItem.audio);
-                }
+    // Resting runs queued script events while time passes, so NPCs fire
+    // floats back to back. Show the text, but don't voice or bleep them.
+    if (shouldStartSpeech && !pipboyIsResting()) {
+        if (messageListItem.audio != nullptr && messageListItem.audio[0] != '\0') {
+            if (messageListItem.flags & 0x01) {
+                soundPlayFile("censor");
+            } else if (gameDialogWindowActive() && objectTypeFromFid(gGameDialogHeadFid) == OBJ_TYPE_HEAD) {
+                gameDialogStartLips(messageListItem.audio);
             } else {
-                debugPrint("Missing speech name: %d\n", messageListItem.num);
+                // No talking head on screen, so just play the line without
+                // lip-sync instead of dropping it.
+                speechLoad(messageListItem.audio, GSOUND_LIMIT_AFTER, GSOUND_STREAM, GSOUND_NO_LOOP);
             }
         }
     }
