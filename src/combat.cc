@@ -1997,6 +1997,12 @@ static int _combat_exps;
 // 0x56D39C combat_free_move
 int _combat_free_move;
 
+// SFALL: Fix for Bonus Move APs being replenished when you save and load the
+// game in combat: the free move points a game in combat was saved with, for
+// the player's turn resumed after loading it (-1 - none). Kept apart because
+// the turn the loading interrupted ends by clearing them.
+static int combatFreeMoveLoaded = -1;
+
 // 0x56D3A0 shoot_ctd — SFALL: Fix M-29. Was a file-level static; moved to
 // stack-local in _shoot_along_path to prevent reentrancy corruption via
 // COMBATDAMAGE hook callbacks (same pattern as I2-28 fix for _explosion_ctd).
@@ -2047,6 +2053,7 @@ int combatInit()
     max_action_points = critterGetStat(gDude, STAT_MAXIMUM_ACTION_POINTS);
 
     _combat_free_move = 0;
+    combatFreeMoveLoaded = -1;
     gBlockCombat = 0;
     _combat_ending_guy = nullptr;
     _combat_end_due_to_load = 0;
@@ -2146,6 +2153,7 @@ void combatReset()
     max_action_points = critterGetStat(gDude, STAT_MAXIMUM_ACTION_POINTS);
 
     _combat_free_move = 0;
+    combatFreeMoveLoaded = -1;
     gBlockCombat = 0;
     _combat_ending_guy = nullptr;
 
@@ -2200,6 +2208,12 @@ int combatLoad(File* stream)
 
     if (fileReadInt32(stream, &_combat_turn_running) == -1) return -1;
     if (fileReadInt32(stream, &_combat_free_move) == -1) return -1;
+
+    // SFALL: Free move points to resume the player's turn with.
+    if (perkGetRank(gDude, PERK_BONUS_MOVE) != 0) {
+        combatFreeMoveLoaded = _combat_free_move;
+    }
+
     if (fileReadInt32(stream, &_combat_exps) == -1) return -1;
     if (fileReadInt32(stream, &_list_com) == -1) return -1;
     if (fileReadInt32(stream, &_list_noncom) == -1) return -1;
@@ -2374,6 +2388,51 @@ bool _combat_safety_invalidate_weapon(Object* attacker, Object* weapon, HitMode 
     return _combat_safety_invalidate_weapon_func(attacker, weapon, hitMode, defender, safeDistancePtr, nullptr);
 }
 
+// SFALL: Fix to reduce friendly fire in burst attacks (sfall's
+// `AIHelpers::CheckShootAndFriendlyInLineOfFire`): the first critter of
+// [team] or other blocking object in the line of fire from [object] to
+// [targetTile]; critters of other teams are shot through.
+static Object* combatShootAndFriendlyInLineOfFire(Object* object, int targetTile, int team)
+{
+    if (object != nullptr && objectTypeFromPid(object->pid) == OBJ_TYPE_CRITTER && object->data.critter.combat.team != team) {
+        int objectTile = object->tile;
+        if (objectTile == targetTile) {
+            return nullptr;
+        }
+
+        if ((object->flags & OBJECT_MULTIHEX) != OBJECT_NONE) {
+            Rotation rotation = tileGetRotationTo(objectTile, targetTile);
+            objectTile = tileGetTileInDirection(objectTile, rotation, 1);
+            if (objectTile == targetTile) {
+                return nullptr;
+            }
+        }
+
+        // The object itself (multihex) is ignored on the rest of the line.
+        Object* obstacle = object;
+        _make_straight_path_func(object, objectTile, targetTile, nullptr, &obstacle, 32, _obj_shoot_blocking_at);
+        object = combatShootAndFriendlyInLineOfFire(obstacle, targetTile, team);
+    }
+
+    return object;
+}
+
+// SFALL: Fix to reduce friendly fire in burst attacks: a critter of the
+// attacker's team in the straight line of fire stops the burst if the
+// attacker notices it (Intelligence against 1d10).
+static bool combatRollFriendlyFire(Object* attacker, Object* defender)
+{
+    Object* obstacle = nullptr;
+    _make_straight_path_func(attacker, attacker->tile, defender->tile, nullptr, &obstacle, 32, _obj_shoot_blocking_at);
+    obstacle = combatShootAndFriendlyInLineOfFire(obstacle, defender->tile, attacker->data.critter.combat.team);
+    if (obstacle == nullptr || objectTypeFromPid(obstacle->pid) != OBJ_TYPE_CRITTER) {
+        return false;
+    }
+
+    int roll = randomBetween(1, 10);
+    return critterGetStat(attacker, STAT_INTELLIGENCE) >= roll;
+}
+
 // 0x4213FC
 static bool _combat_safety_invalidate_weapon_func(Object* attacker, Object* weapon, HitMode hitMode, Object* defender, int* safeDistancePtr, Object* attackerFriend)
 {
@@ -2426,7 +2485,11 @@ static bool _combat_safety_invalidate_weapon_func(Object* attacker, Object* weap
 
         if (objectGetDistanceBetween(defender, attacker) <= damageRadius) {
             if (safeDistancePtr != nullptr) {
-                *safeDistancePtr = damageRadius - objectGetDistanceBetween(defender, attacker) + 1;
+                // SFALL: Fix for ai_move_away_ engine function not working
+                // correctly in cases when needing to move a distance away
+                // from the target: the distance to move away, negative (see
+                // `_ai_move_away`).
+                *safeDistancePtr = objectGetDistanceBetween(defender, attacker) - damageRadius - 1;
                 return false;
             }
 
@@ -2439,6 +2502,12 @@ static bool _combat_safety_invalidate_weapon_func(Object* attacker, Object* weap
     AnimationType anim = weaponGetAnimationForHitMode(weapon, hitMode);
     if (anim != ANIM_FIRE_BURST && anim != ANIM_FIRE_CONTINUOUS) {
         return false;
+    }
+
+    // SFALL: Fix to reduce friendly fire in burst attacks.
+    if (combatRollFriendlyFire(attacker, defender)) {
+        debugPrint("Friendly was in the way!");
+        return true;
     }
 
     Attack attack;
@@ -2870,7 +2939,8 @@ void _combat_update_critter_outline_for_los(Object* critter, bool enableOutline)
 // 0x421EFC
 static void _combat_over()
 {
-    if (_game_user_wants_to_quit == GAME_QUIT_REQUEST_NONE) {
+    if (_game_user_wants_to_quit == GAME_QUIT_REQUEST_NONE
+        || _game_user_wants_to_quit == GAME_QUIT_REQUEST_END_COMBAT) {
         for (int index = 0; index < _list_com; index++) {
             Object* critter = _combat_list[index];
             if (critter != gDude) {
@@ -2915,7 +2985,8 @@ static void _combat_over()
 
     interfaceRenderActionPoints(0, 0);
 
-    if (_game_user_wants_to_quit == GAME_QUIT_REQUEST_NONE) {
+    if (_game_user_wants_to_quit == GAME_QUIT_REQUEST_NONE
+        || _game_user_wants_to_quit == GAME_QUIT_REQUEST_END_COMBAT) {
         _combat_give_exps(_combat_exps);
     }
 
@@ -3379,7 +3450,16 @@ static int _combat_turn(Object* obj, bool reloadedDuringCombat)
             keyboardReset();
             inputEventQueueReset();
             interfaceRenderArmorClass(true);
-            _combat_free_move = 2 * perkGetRank(gDude, PERK_BONUS_MOVE);
+
+            // SFALL: The turn resumed after loading keeps the free move
+            // points the game was saved with.
+            if (combatFreeMoveLoaded != -1) {
+                _combat_free_move = combatFreeMoveLoaded;
+                combatFreeMoveLoaded = -1;
+            } else {
+                _combat_free_move = 2 * perkGetRank(gDude, PERK_BONUS_MOVE);
+            }
+
             interfaceRenderActionPoints(gDude->data.critter.combat.ap, _combat_free_move);
         } else {
             soundContinueAll();
@@ -3462,7 +3542,24 @@ static int _combat_turn(Object* obj, bool reloadedDuringCombat)
                     tileWindowRefreshRect(&rect, obj->elevation);
                 }
 
-                _combat_ai(obj, _gcsd != nullptr ? _gcsd->defender : nullptr);
+                int retryMinAp = settings.combat_ai.npcs_try_to_spend_extra_ap;
+                int lastRetryAp = 0;
+                Object* target = _gcsd != nullptr ? _gcsd->defender : nullptr;
+                while (true) {
+                    _combat_ai(obj, target);
+                    if (retryMinAp <= 0) {
+                        break;
+                    }
+                    _combat_turn_run();
+                    int remainingAp = obj->data.critter.combat.ap;
+                    if ((obj->data.critter.combat.results & DAM_DEAD) != DAM_NONE
+                        || remainingAp < retryMinAp
+                        || remainingAp == lastRetryAp) {
+                        break;
+                    }
+                    lastRetryAp = remainingAp;
+                    target = nullptr;
+                }
             }
         }
 
@@ -3579,13 +3676,29 @@ static bool _combat_should_end()
 
     for (index = 0; index < _list_com; index++) {
         Object* critter = _combat_list[index];
-        if (critter->data.critter.combat.team != team) {
-            break;
+        Object* critterWhoHitMe = critter->data.critter.combat.whoHitMe;
+        if (critterWhoHitMe == nullptr) {
+            continue;
         }
 
-        Object* critterWhoHitMe = critter->data.critter.combat.whoHitMe;
-        if (critterWhoHitMe != nullptr && critterWhoHitMe->data.critter.combat.team == team) {
-            break;
+        // CE: Knocked-out targets leave the active combatant list and cannot
+        // keep combat running through another critter's stale target pointer.
+        if ((critterWhoHitMe->data.critter.combat.results & DAM_KNOCKED_OUT) != DAM_NONE) {
+            continue;
+        }
+
+        // Match sfall's combat_should_end_check_fix: a different team alone
+        // does not establish hostility. Check the critter's current target.
+        bool targetAlive = (critterWhoHitMe->data.critter.combat.results & DAM_DEAD) == DAM_NONE;
+        if (critter->data.critter.combat.team == team) {
+            if ((critterWhoHitMe->data.critter.combat.maneuver & CRITTER_MANEUVER_DISENGAGING) == CRITTER_MANEUVER_NONE
+                && targetAlive) {
+                break;
+            }
+        } else {
+            if (critterWhoHitMe->data.critter.combat.team == team || targetAlive) {
+                break;
+            }
         }
     }
 
@@ -5543,6 +5656,28 @@ static void attackComputeDamage(Attack* attack, int numRounds, int baseDamageMul
     sfallTargetKnockbackValue = 0.0f;
     sfallAttackerKnockbackType = 0;
     sfallAttackerKnockbackValue = 0.0f;
+
+    // SFALL: Fix zero damage instadeath criticals (from sfall, upstream #779).
+    // An instadeath critical writes DAM_DEAD into defenderFlags before the
+    // damage is computed (attackComputeCriticalHit, line 4935), so a critical
+    // that lands the death effect but ends at zero damage — DT/DR absorbing the
+    // whole roll, since *damagePtr only grows for positive per-round damage
+    // (lines 5518-5520) — leaves _damage_object's `damage <= 0` early return
+    // (line 5835) to skip critterAdjustHitPoints, SCRIPT_PROC_DESTROY, the
+    // XP/kill accounting and partyMemberRemove. The critter is dead
+    // (_set_new_results already wrote results |= DAM_DEAD) but the death is
+    // never registered. One point of damage is the minimum that lets the
+    // normal death path run.
+    //
+    // The predicate is DAM_DEAD *and* damage <= 0: UM-94's negative-damage
+    // healing values (sfall_script_hooks.cc:1466-1471) never carry DAM_DEAD, so
+    // healing is untouched. The floor sits here rather than inside
+    // scriptHooks_ComputeDamage because that wrapper returns on its first
+    // statement when no HOOK_COMBATDAMAGE handler is registered
+    // (sfall_script_hooks.cc:1436-1438) — the unmodded case this fix exists for.
+    if ((attack->defenderFlags & DAM_DEAD) != DAM_NONE && attack->defenderDamage <= 0) {
+        attack->defenderDamage = 1;
+    }
 }
 
 // 0x424BAC
@@ -5579,7 +5714,9 @@ void _apply_damage(Attack* attack, bool animated)
     if (!defenderIsCritter && !hitUnintendedTarget) {
         bool shouldRunDamageProc = !objectIsPartyMember(attack->defender) || !objectIsPartyMember(attack->attacker);
         if (shouldRunDamageProc) {
-            if (defender != nullptr && defender->sid != -1) {
+            // SFALL: Fix for damage_p_proc being called for misses if the
+            // target is not a critter.
+            if (defender != nullptr && defender->sid != -1 && (attack->attackerFlags & DAM_HIT) != DAM_NONE) {
                 scriptSetFixedParam(defender->sid, attack->attackerDamage);
                 scriptSetObjects(defender->sid, attack->attacker, attack->weapon);
                 scriptExecProc(defender->sid, SCRIPT_PROC_DAMAGE);
@@ -7001,8 +7138,20 @@ static void criticalsInit()
 
     if (mode == 2 || mode == 3) {
         // Men
+        // SFALL: Right arm messages as for the left arm: the crippled arm's
+        // message only when it's crippled (sfall cfcc66ad, 2023-12).
+        criticalsSetValue(KILL_TYPE_MAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MESSAGE_ID, 5010);
+        criticalsSetValue(KILL_TYPE_MAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5014);
+
         criticalsSetValue(KILL_TYPE_MAN, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_FLAGS, DAM_KNOCKED_DOWN | DAM_BYPASS);
         criticalsSetValue(KILL_TYPE_MAN, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MESSAGE_ID, 5019);
+
+        // Women
+        criticalsSetValue(KILL_TYPE_WOMAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MESSAGE_ID, 5110);
+        criticalsSetValue(KILL_TYPE_WOMAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5114);
+
+        criticalsSetValue(KILL_TYPE_WOMAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_4, CRIT_DATA_MEMBER_MESSAGE_ID, 5110);
+        criticalsSetValue(KILL_TYPE_WOMAN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_4, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5114);
 
         // Children
         criticalsSetValue(KILL_TYPE_CHILD, HIT_LOCATION_RIGHT_LEG, CRITICAL_EFFECT_2, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_FLAGS, 0);
@@ -7026,7 +7175,9 @@ static void criticalsInit()
         criticalsSetValue(KILL_TYPE_CHILD, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MESSAGE_ID, 5212);
 
         // Super Mutants
-        criticalsSetValue(KILL_TYPE_SUPER_MUTANT, HIT_LOCATION_LEFT_LEG, CRITICAL_EFFECT_2, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5306);
+        // SFALL: The right arm's (as the left arm), not the left leg's, where
+        // it replaced the knockdown message (sfall c0f11b7a, 2024-02).
+        criticalsSetValue(KILL_TYPE_SUPER_MUTANT, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_2, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5306);
 
         // Ghouls
         criticalsSetValue(KILL_TYPE_GHOUL, HIT_LOCATION_HEAD, CRITICAL_EFFECT_5, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_STAT, -1);
@@ -7053,6 +7204,8 @@ static void criticalsInit()
         criticalsSetValue(KILL_TYPE_DEATH_CLAW, HIT_LOCATION_LEFT_LEG, CRITICAL_EFFECT_6, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_FLAGS, DAM_CRIP_LEG_LEFT);
 
         // Geckos
+        criticalsSetValue(KILL_TYPE_GECKO, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5014);
+
         criticalsSetValue(KILL_TYPE_GECKO, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_1, CRIT_DATA_MEMBER_MESSAGE_ID, 6701);
         criticalsSetValue(KILL_TYPE_GECKO, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_2, CRIT_DATA_MEMBER_MESSAGE_ID, 6701);
         criticalsSetValue(KILL_TYPE_GECKO, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_FLAGS, DAM_KNOCKED_DOWN | DAM_BYPASS);
@@ -7062,9 +7215,13 @@ static void criticalsInit()
         criticalsSetValue(KILL_TYPE_GECKO, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_6, CRIT_DATA_MEMBER_MESSAGE_ID, 6704);
 
         // Aliens
+        criticalsSetValue(KILL_TYPE_ALIEN, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5014);
+
         criticalsSetValue(KILL_TYPE_ALIEN, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_FLAGS, DAM_KNOCKED_DOWN | DAM_BYPASS);
 
         // Giant Ants
+        criticalsSetValue(KILL_TYPE_GIANT_ANT, HIT_LOCATION_RIGHT_ARM, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_MASSIVE_CRITICAL_MESSAGE_ID, 5014);
+
         criticalsSetValue(KILL_TYPE_GIANT_ANT, HIT_LOCATION_UNCALLED, CRITICAL_EFFECT_3, CRIT_DATA_MEMBER_FLAGS, DAM_KNOCKED_DOWN | DAM_BYPASS);
 
         // Big Bad Boss

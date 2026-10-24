@@ -19,11 +19,13 @@
 #include "geometry.h"
 #include "interface.h"
 #include "interpreter_extra.h"
+#include "inventory.h"
 #include "item.h"
 #include "map.h"
 #include "message.h"
 #include "object.h"
 #include "palette.h"
+#include "party_member.h"
 #include "perk.h"
 #include "perk_tweak.h"
 #include "proto.h"
@@ -39,7 +41,8 @@
 
 namespace fallout {
 
-static int _obj_remove_from_inven(Object* critter, Object* item);
+static bool objectGetInvenSlot(Object* critter, Object* item, InvenSlot* slot);
+static int _obj_remove_from_inven(Object* critter, Object* item, bool runInvenWieldHook = true);
 static UseItemResultCode _obj_use_book(Object* item);
 static UseItemResultCode _obj_use_flare(Object* critter, Object* item);
 static UseItemResultCode _obj_use_radio(Object* item);
@@ -617,13 +620,34 @@ int objectPickup(Object* critter, Object* item)
                 itemSetMoney(item, 0);
             }
         } else {
-            rc = itemAttemptAdd(critter, item, 1);
+            // SFALL: Fix for NPC stuck in a loop of picking up items in combat:
+            // in combat an NPC picks up the item regardless of its weight.
+            if (critter != gDude && isInCombat()) {
+                rc = itemAdd(critter, item, 1);
+            } else {
+                rc = itemAttemptAdd(critter, item, 1);
+            }
         }
 
         if (rc == 0) {
             Rect rect;
             _obj_disconnect(item, &rect);
             tileWindowRefreshRect(&rect, item->elevation);
+        } else if (critter != gDude) {
+            // SFALL: Fix for the incorrect message being displayed when the NPC
+            // cannot pick up an item due to not enough space in the inventory
+            // (the player's one).
+            // %s cannot pick up the item.
+            MessageListItem messageListItem;
+            messageListItem.num = 1000;
+            const char* format = "%s cannot pick up the item.";
+            if (messageListGetItem(&gCeMessageList, &messageListItem)) {
+                format = messageListItem.text;
+            }
+
+            char formattedMessage[160];
+            snprintf(formattedMessage, sizeof(formattedMessage), format, critterGetName(critter));
+            displayMonitorAddMessage(formattedMessage);
         } else {
             MessageListItem messageListItem;
             // You cannot pick up that item. You are at your maximum weight capacity.
@@ -637,28 +661,36 @@ int objectPickup(Object* critter, Object* item)
     return 0;
 }
 
+// The slot of the critter's item: in a hand or worn.
+static bool objectGetInvenSlot(Object* critter, Object* item, InvenSlot* slot)
+{
+    if (critterGetItem2(critter) == item) {
+        *slot = InvenSlot::RightHand;
+        return true;
+    } else if (critterGetItem1(critter) == item) {
+        *slot = InvenSlot::LeftHand;
+        return true;
+    } else if (critterGetArmor(critter) == item) {
+        *slot = InvenSlot::Armor;
+        return true;
+    }
+
+    return false;
+}
+
 // 0x49B73C
-static int _obj_remove_from_inven(Object* critter, Object* item)
+static int _obj_remove_from_inven(Object* critter, Object* item, bool runInvenWieldHook)
 {
     Rect updatedRect;
     int fid;
     int appearanceUpdateType = 0;
     InvenSlot slot = InvenSlot::Armor;
-    bool hasSlot = false;
-
-    if (critterGetItem2(critter) == item) {
-        slot = InvenSlot::RightHand;
-        hasSlot = true;
-    } else if (critterGetItem1(critter) == item) {
-        slot = InvenSlot::LeftHand;
-        hasSlot = true;
-    } else if (critterGetArmor(critter) == item) {
-        slot = InvenSlot::Armor;
-        hasSlot = true;
-    }
+    bool hasSlot = objectGetInvenSlot(critter, item, &slot);
 
     if (hasSlot) {
-        scriptHooks_InvenWield(critter, item, slot, 0, 1);
+        if (runInvenWieldHook) {
+            scriptHooks_InvenWield(critter, item, slot, 0, 1);
+        }
         if (slot == InvenSlot::RightHand) {
             if (critter != gDude || interfaceGetCurrentHand() == HAND_RIGHT) {
                 fid = buildFid(OBJ_TYPE_CRITTER, critter->fid & 0xFFF, animationTypeFromFid(critter->fid), WEAPON_ANIMATION_NONE, critter->rotation);
@@ -743,7 +775,20 @@ int objectDrop(Object* invenObj, Object* itemObj)
         return 0;
     }
 
-    if (_obj_remove_from_inven(invenObj, itemObj) == 0) {
+    // SFALL: Fix for drop_obj function: the stats of the armor the player or
+    // a party member wears go with it. As in sfall, HOOK_INVENWIELD runs
+    // first (with the armor's stats still on), so removing the item doesn't
+    // run it again.
+    InvenSlot slot;
+    if (objectGetInvenSlot(invenObj, itemObj, &slot)) {
+        scriptHooks_InvenWield(invenObj, itemObj, slot, 0, 1);
+    }
+
+    if ((itemObj->flags & OBJECT_WORN) != OBJECT_NONE && objectIsPartyMember(invenObj)) {
+        adjustCritterStatsOnArmorChange(invenObj, itemObj, nullptr);
+    }
+
+    if (_obj_remove_from_inven(invenObj, itemObj, false) == 0) {
         Object* owner = objectGetOwner(invenObj);
         if (owner == nullptr) {
             owner = invenObj;

@@ -129,6 +129,10 @@ GameQuitRequest _game_user_wants_to_quit = GAME_QUIT_REQUEST_NONE;
 // 0x58E940 misc_message_file
 MessageList gMiscMessageList;
 
+// CE: Texts CE adds (ce.msg). The ones missing in a translation are shown in
+// English, as the code has them.
+MessageList gCeMessageList;
+
 bool gGameLoaded = false;
 
 extern bool gFallout1Behavior;
@@ -383,6 +387,11 @@ int gameInitWithOptions(const char* windowTitle, bool isMapper, int font, int fl
 
     debugPrint(">message_load\t");
 
+    // CE: Optional, the code has the English texts.
+    messageListInit(&gCeMessageList);
+    snprintf(path, sizeof(path), "%s%s", asc_5186C8, "ce.msg");
+    messageListLoad(&gCeMessageList, path);
+
     if (scriptsDisable() != 0) {
         debugPrint("Failed on scr_disable\n");
         return -1;
@@ -540,6 +549,7 @@ void gameExit()
     tileDisable();
     messageListRepositorySetStandardMessageList(STANDARD_MESSAGE_LIST_MISC, nullptr);
     messageListFree(&gMiscMessageList);
+    messageListFree(&gCeMessageList);
     combatExit();
     gameDialogExit();
     _scr_game_exit();

@@ -98,7 +98,7 @@ static int _compare_weakness(const void* a1, const void* a2);
 static void _ai_sort_list_weakness(Object** critterList, int length);
 static Object* _ai_find_nearest_team(Object* a1, Object* a2, int flags);
 static Object* _ai_find_nearest_team_in_combat(Object* a1, Object* a2, int flags);
-static int aiFindAttackers(Object* critter, Object** whoHitMePtr, Object** whoHitFriendPtr, Object** whoHitByFriendPtr);
+static int aiFindAttackers(Object* critter, Object* (&targets)[4]);
 static Object* _ai_danger_source(Object* a1);
 static bool aiHaveAmmo(Object* critter, Object* weapon, Object** ammoPtr);
 static int aiGetWeaponRangeForHitMode(Object* critter, Object* weapon, HitMode hitMode);
@@ -1350,6 +1350,18 @@ static int _ai_check_drugs(Object* critter)
     return 0;
 }
 
+static void aiFinishMovement(Object* critter)
+{
+    _combat_turn_run();
+
+    // SFALL: Animation processing can incapacitate the actor through scripts.
+    // Clear AP before AI can schedule more movement or retry its turn.
+    CritterCombatData& combatData = critter->data.critter.combat;
+    if ((combatData.results & (DAM_DEAD | DAM_KNOCKED_OUT | DAM_LOSE_TURN)) != DAM_NONE) {
+        combatData.ap = 0;
+    }
+}
+
 // 0x428868 ai_run_away
 static void _ai_run_away(Object* a1, Object* a2)
 {
@@ -1394,7 +1406,7 @@ static void _ai_run_away(Object* a1, Object* a2)
             _combatai_msg(a1, nullptr, AI_MESSAGE_TYPE_RUN, 0);
             animationRegisterRunToTile(a1, destination, a1->elevation, combatData->ap, 0);
             if (reg_anim_end() == 0) {
-                _combat_turn_run();
+                aiFinishMovement(a1);
             }
         }
     } else {
@@ -1410,11 +1422,20 @@ static int _ai_move_away(Object* a1, Object* a2, int a3)
         return -1;
     }
 
-    if (ai->distance == DISTANCE_STAY) {
+    // SFALL: Fix for ai_move_away_ engine function not working correctly in
+    // cases when needing to move a distance away from the target: a negative
+    // [a3] is the distance to move away (at most the action points), whatever
+    // the distance to [a2] is.
+    bool moveDistance = a3 < 0;
+    if (moveDistance) {
+        a3 = -a3;
+    }
+
+    if (!moveDistance && ai->distance == DISTANCE_STAY) {
         return -1;
     }
 
-    if (objectGetDistanceBetween(a1, a2) <= a3) {
+    if (moveDistance || objectGetDistanceBetween(a1, a2) <= a3) {
         int actionPoints = a1->data.critter.combat.ap;
         if (a3 < actionPoints) {
             actionPoints = a3;
@@ -1644,19 +1665,20 @@ static Object* _ai_find_nearest_team_in_combat(Object* a1, Object* a2, int flags
 }
 
 // 0x428DB0
-static int aiFindAttackers(Object* critter, Object** whoHitMePtr, Object** whoHitFriendPtr, Object** whoHitByFriendPtr)
+static int aiFindAttackers(Object* critter, Object* (&targets)[4])
 {
-    if (whoHitMePtr != nullptr) {
-        *whoHitMePtr = nullptr;
-    }
+    targets[1] = nullptr;
+    targets[2] = nullptr;
+    targets[3] = nullptr;
 
-    if (whoHitFriendPtr != nullptr) {
-        *whoHitFriendPtr = nullptr;
-    }
-
-    if (whoHitByFriendPtr != nullptr) {
-        *whoHitByFriendPtr = nullptr;
-    }
+    auto targetExists = [&targets](Object* target) {
+        for (Object* existing : targets) {
+            if (existing == target) {
+                return true;
+            }
+        }
+        return false;
+    };
 
     if (_curr_crit_num == 0) {
         return 0;
@@ -1668,42 +1690,46 @@ static int aiFindAttackers(Object* critter, Object** whoHitMePtr, Object** whoHi
     int foundTargetCount = 0;
     int team = critter->data.critter.combat.team;
 
-    // SFALL: Add `continue` to fix for one candidate being reported in more
-    // than one category.
+    // Match sfall's TargetExistInList checks across all four slots, including
+    // the preserved target. Reject duplicates before filling a category so
+    // later roster entries can still supply a distinct enemy.
     for (int index = 0; foundTargetCount < 3 && index < _curr_crit_num; index++) {
         Object* candidate = _curr_crit_list[index];
         if (candidate != critter) {
-            if (whoHitMePtr != nullptr && *whoHitMePtr == nullptr) {
+            if (targets[1] == nullptr) {
                 if ((candidate->data.critter.combat.results & DAM_DEAD) == DAM_NONE
-                    && candidate->data.critter.combat.whoHitMe == critter) {
+                    && candidate->data.critter.combat.whoHitMe == critter
+                    && !targetExists(candidate)) {
                     foundTargetCount++;
-                    *whoHitMePtr = candidate;
+                    targets[1] = candidate;
                     continue;
                 }
             }
 
-            if (whoHitFriendPtr != nullptr && *whoHitFriendPtr == nullptr) {
+            if (targets[2] == nullptr) {
                 if (team == candidate->data.critter.combat.team) {
                     Object* whoHitCandidate = candidate->data.critter.combat.whoHitMe;
                     if (whoHitCandidate != nullptr
                         && whoHitCandidate != critter
                         && team != whoHitCandidate->data.critter.combat.team
-                        && (whoHitCandidate->data.critter.combat.results & DAM_DEAD) == DAM_NONE) {
+                        && (whoHitCandidate->data.critter.combat.results & DAM_DEAD) == DAM_NONE
+                        && !targetExists(whoHitCandidate)) {
                         foundTargetCount++;
-                        *whoHitFriendPtr = whoHitCandidate;
+                        targets[2] = whoHitCandidate;
                         continue;
                     }
                 }
             }
 
-            if (whoHitByFriendPtr != nullptr && *whoHitByFriendPtr == nullptr) {
+            if (targets[3] == nullptr) {
                 if (candidate->data.critter.combat.team != team
                     && (candidate->data.critter.combat.results & DAM_DEAD) == DAM_NONE) {
                     Object* whoHitCandidate = candidate->data.critter.combat.whoHitMe;
                     if (whoHitCandidate != nullptr
-                        && whoHitCandidate->data.critter.combat.team == team) {
+                        && whoHitCandidate->data.critter.combat.team == team
+                        && !targetExists(candidate)) {
                         foundTargetCount++;
-                        *whoHitByFriendPtr = candidate;
+                        targets[3] = candidate;
                         continue;
                     }
                 }
@@ -1726,6 +1752,7 @@ static Object* _ai_danger_source(Object* a1)
     AttackWho attackWho;
     Object* targets[4];
     targets[0] = nullptr;
+    bool preservedPartyTarget = false;
 
     if (objectIsPartyMember(a1)) {
         Disposition disposition = aiGetDisposition(a1);
@@ -1906,6 +1933,12 @@ static Object* _ai_danger_source(Object* a1)
         case ATTACK_WHO_STRONGEST:
         case ATTACK_WHO_WEAKEST:
         case ATTACK_WHO_CLOSEST:
+            targets[0] = a1->data.critter.combat.whoHitMe;
+            if (targets[0] == a1
+                || (targets[0] != nullptr && (targets[0]->data.critter.combat.results & DAM_DEAD) != DAM_NONE)) {
+                targets[0] = nullptr;
+            }
+            preservedPartyTarget = true;
             a1->data.critter.combat.whoHitMe = nullptr;
             break;
         default:
@@ -1916,49 +1949,52 @@ static Object* _ai_danger_source(Object* a1)
     }
 
     Object* whoHitMe = a1->data.critter.combat.whoHitMe;
-    if (whoHitMe == nullptr || a1 == whoHitMe) {
-        targets[0] = nullptr;
-    } else {
-        if ((whoHitMe->data.critter.combat.results & DAM_DEAD) == 0) {
-            if (attackWho == ATTACK_WHO_WHOMEVER || attackWho == -1) {
-                ScriptHookCall hook(HOOK_FINDTARGET, 1, { a1, whoHitMe });
-                hook.call();
-                if (hook.numReturnValues() > 0) {
-                    Object* hookCandidate = hook.getReturnValueAt(0).asObject();
-                    if (hookCandidate != nullptr && objectTypeFromPid(hookCandidate->pid) == OBJ_TYPE_CRITTER) {
-                        // SFALL: Fix I2-M045 — validate that the hook
-                        // didn't return an ally as a target. The same-function
-                        // dead-path team check at line 1924 shows the expected
-                        // pattern, but the alive-path hook bypasses it.
-                        if (hookCandidate->data.critter.combat.team != a1->data.critter.combat.team) {
-                            // SFALL: Fix F-M12 — validate that the hook
-                            // didn't return a dead critter, which would
-                            // waste AI turns (10 loop iterations before
-                            // COMBAT_BAD_SHOT_ALREADY_DEAD rejects).
-                            if (!critterIsDead(hookCandidate)) {
-                                whoHitMe = hookCandidate;
+    if (!preservedPartyTarget) {
+        if (whoHitMe == nullptr || a1 == whoHitMe) {
+            targets[0] = nullptr;
+        } else {
+            if ((whoHitMe->data.critter.combat.results & DAM_DEAD) == 0) {
+                if (attackWho == ATTACK_WHO_WHOMEVER || attackWho == -1) {
+                    ScriptHookCall hook(HOOK_FINDTARGET, 1, { a1, whoHitMe });
+                    hook.call();
+                    if (hook.numReturnValues() > 0) {
+                        Object* hookCandidate = hook.getReturnValueAt(0).asObject();
+                        if (hookCandidate != nullptr && objectTypeFromPid(hookCandidate->pid) == OBJ_TYPE_CRITTER) {
+                            // SFALL: Fix I2-M045 — validate that the hook
+                            // didn't return an ally as a target. The
+                            // dead-path team check in this function shows the
+                            // expected pattern, but the alive-path hook
+                            // bypasses it.
+                            if (hookCandidate->data.critter.combat.team != a1->data.critter.combat.team) {
+                                // SFALL: Fix F-M12 — validate that the hook
+                                // didn't return a dead critter, which would
+                                // waste AI turns (10 loop iterations before
+                                // COMBAT_BAD_SHOT_ALREADY_DEAD rejects).
+                                if (!critterIsDead(hookCandidate)) {
+                                    whoHitMe = hookCandidate;
+                                }
+                            } else {
+                                debugPrint("HOOK_FINDTARGET: script returned same-team critter (pid=%d), ignoring override",
+                                    hookCandidate->pid);
                             }
-                        } else {
-                            debugPrint("HOOK_FINDTARGET: script returned same-team critter (pid=%d), ignoring override",
+                        } else if (hookCandidate != nullptr) {
+                            debugPrint("HOOK_FINDTARGET: script returned non-critter object (pid=%d), ignoring override",
                                 hookCandidate->pid);
                         }
-                    } else if (hookCandidate != nullptr) {
-                        debugPrint("HOOK_FINDTARGET: script returned non-critter object (pid=%d), ignoring override",
-                            hookCandidate->pid);
                     }
+                    return whoHitMe;
                 }
-                return whoHitMe;
-            }
-        } else {
-            if (whoHitMe->data.critter.combat.team != a1->data.critter.combat.team) {
-                targets[0] = _ai_find_nearest_team(a1, whoHitMe, 1);
             } else {
-                targets[0] = nullptr;
+                if (whoHitMe->data.critter.combat.team != a1->data.critter.combat.team) {
+                    targets[0] = _ai_find_nearest_team(a1, whoHitMe, 1);
+                } else {
+                    targets[0] = nullptr;
+                }
             }
         }
     }
 
-    aiFindAttackers(a1, &(targets[1]), &(targets[2]), &(targets[3]));
+    aiFindAttackers(a1, targets);
 
     if (ignoreFleeingCritters) {
         for (int index = 0; index < 4; index++) {
@@ -2723,6 +2759,29 @@ static Object* _ai_search_environ(Object* critter, ItemType itemType)
     return foundItem;
 }
 
+// SFALL: Fix for ai_retrieve_object_ engine function not returning the
+// requested object when there are different objects with the same ID: the
+// object itself in [owner]'s inventory (containers included).
+static Object* aiInventoryFindObject(Object* owner, Object* object)
+{
+    Inventory* inventory = &(owner->data.inventory);
+    for (int index = 0; index < inventory->length; index++) {
+        Object* item = inventory->items[index].item;
+        if (item == object) {
+            return item;
+        }
+
+        if (itemGetType(item) == ITEM_TYPE_CONTAINER) {
+            item = aiInventoryFindObject(item, object);
+            if (item != nullptr) {
+                return item;
+            }
+        }
+    }
+
+    return nullptr;
+}
+
 // 0x429D60
 static Object* _ai_retrieve_object(Object* critter, Object* item)
 {
@@ -2735,7 +2794,13 @@ static Object* _ai_retrieve_object(Object* critter, Object* item)
 
     // Find the item in NPC's inventory. This step is needed because NPC could
     // not get the item on this turn.
-    Object* retrievedItem = inventoryFindById(critter, item->id);
+    // SFALL: Fix for ai_retrieve_object_ engine function not returning the
+    // requested object when there are different objects with the same ID:
+    // the object itself first, else the one with its id (the original).
+    Object* retrievedItem = aiInventoryFindObject(critter, item);
+    if (retrievedItem == nullptr) {
+        retrievedItem = inventoryFindById(critter, item->id);
+    }
 
     if (retrievedItem != nullptr || item->owner != nullptr) {
         // Either NPC have the item, or someone else have picked it up.
@@ -2825,6 +2890,15 @@ static HitMode _ai_pick_hit_mode(Object* attacker, Object* weapon, Object* defen
         if (intelligence < 6 || objectGetDistanceBetween(attacker, defender) < 10) {
             if (randomBetween(1, ai->secondary_freq) == 1) {
                 useSecondaryMode = true;
+
+                // SFALL: Fix to reduce friendly fire in burst attacks (for
+                // an unset `area_attack_mode`): unless the attacker is
+                // dumb, a burst that isn't safe isn't chosen.
+                if (intelligence >= 3
+                    && weaponGetAnimationForHitMode(weapon, HIT_MODE_RIGHT_WEAPON_SECONDARY) == ANIM_FIRE_BURST
+                    && _combat_safety_invalidate_weapon(attacker, weapon, HIT_MODE_RIGHT_WEAPON_SECONDARY, defender, nullptr)) {
+                    useSecondaryMode = false;
+                }
             }
         }
     }
@@ -2931,14 +3005,22 @@ static int _ai_move_steps_closer(Object* critter, Object* target, int actionPoin
         _cai_retargetTileFromFriendlyFire(critter, target, &tile);
     }
 
+    // SFALL: Fix for multihex critters moving too close and overlapping their
+    // targets in combat: when the target or the critter is multihex, to the
+    // object only when the tile isn't retargeted, else to the tile.
+    bool toObject = false;
+    if ((target->flags & OBJECT_MULTIHEX) != OBJECT_NONE || (critter->flags & OBJECT_MULTIHEX) != OBJECT_NONE) {
+        toObject = target->tile == tile;
+    }
+
     if (actionPoints >= critterGetStat(critter, STAT_MAXIMUM_ACTION_POINTS) / 2 && artCritterFidShouldRun(critter->fid)) {
-        if ((target->flags & OBJECT_MULTIHEX) != OBJECT_NONE) {
+        if (toObject) {
             animationRegisterRunToObject(critter, target, actionPoints, 0);
         } else {
             animationRegisterRunToTile(critter, tile, critter->elevation, actionPoints, 0);
         }
     } else {
-        if ((target->flags & OBJECT_MULTIHEX) != OBJECT_NONE) {
+        if (toObject) {
             animationRegisterMoveToObject(critter, target, actionPoints, 0);
         } else {
             animationRegisterMoveToTile(critter, tile, critter->elevation, actionPoints, 0);
@@ -2949,7 +3031,7 @@ static int _ai_move_steps_closer(Object* critter, Object* target, int actionPoin
         return -1;
     }
 
-    _combat_turn_run();
+    aiFinishMovement(critter);
 
     return 0;
 }
@@ -2960,6 +3042,32 @@ static int _ai_move_steps_closer(Object* critter, Object* target, int actionPoin
 static int _ai_move_closer(Object* a1, Object* a2, bool taunt)
 {
     return _ai_move_steps_closer(a1, a2, a1->data.critter.combat.ap, taunt);
+}
+
+// SFALL: The first object blocking a multihex [critter] moving to [tile]:
+// the tiles around it, or, next to it, the three ahead of it.
+static Object* aiMultihexMoveIsBlocking(Object* critter, int tile)
+{
+    if (tileDistanceBetween(critter->tile, tile) > 1) {
+        for (int rotation = ROTATION_COUNT - 1; rotation >= 0; rotation--) {
+            int aroundTile = tileGetTileInDirection(tile, static_cast<Rotation>(rotation), 1);
+            Object* obstacle = _obj_blocking_at(critter, aroundTile, critter->elevation);
+            if (obstacle != nullptr) {
+                return obstacle;
+            }
+        }
+        return nullptr;
+    }
+
+    int rotation = tileGetRotationTo(critter->tile, tile);
+    for (int turn : { 0, 1, 5 }) {
+        int aheadTile = tileGetTileInDirection(tile, static_cast<Rotation>((rotation + turn) % ROTATION_COUNT), 1);
+        Object* obstacle = _obj_blocking_at(critter, aheadTile, critter->elevation);
+        if (obstacle != nullptr) {
+            return obstacle;
+        }
+    }
+    return nullptr;
 }
 
 // 0x42A1D4
@@ -3033,7 +3141,11 @@ static int _cai_retargetTileFromFriendlyFire(Object* source, Object* target, int
                 break;
             }
 
-            if (_obj_blocking_at(nullptr, tile, source->elevation) == nullptr) {
+            // SFALL: Check neighboring tiles to prevent critters from
+            // overlapping other object tiles when moving to the retargeted
+            // tile (the source itself doesn't block it).
+            if (_obj_blocking_at(source, tile, source->elevation) == nullptr
+                && ((source->flags & OBJECT_MULTIHEX) == OBJECT_NONE || aiMultihexMoveIsBlocking(source, tile) == nullptr)) {
                 int distance = tileDistanceBetween(*tilePtr, tile);
                 if (distance < minDistance) {
                     minDistance = distance;
