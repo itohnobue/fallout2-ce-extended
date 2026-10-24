@@ -1,5 +1,6 @@
 #include "main.h"
 
+#include <algorithm>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -46,9 +47,6 @@
 #include "worldmap.h"
 
 namespace fallout {
-
-#define DEATH_WINDOW_WIDTH 640
-#define DEATH_WINDOW_HEIGHT 480
 
 static bool falloutInit(int argc, char** argv);
 static int main_reset_system();
@@ -499,12 +497,14 @@ static void showDeath()
         mouseShowCursor();
     }
 
-    int deathWindowX = (screenGetWidth() - DEATH_WINDOW_WIDTH) / 2;
-    int deathWindowY = (screenGetHeight() - DEATH_WINDOW_HEIGHT) / 2;
+    int screenWidth = screenGetWidth();
+    int screenHeight = screenGetHeight();
+    int deathWindowX = 0;
+    int deathWindowY = 0;
     int win = windowCreate(deathWindowX,
         deathWindowY,
-        DEATH_WINDOW_WIDTH,
-        DEATH_WINDOW_HEIGHT,
+        screenWidth,
+        screenHeight,
         0,
         WINDOW_MOVE_ON_TOP);
     if (win != -1) {
@@ -533,7 +533,14 @@ static void showDeath()
             keyboardReset();
             inputEventQueueReset();
 
-            blitBufferToBuffer(backgroundFrmImage.getData(), 640, 480, 640, windowBuffer, 640);
+            // NOTE: Load the death palette before drawing: the fill color
+            // (COLOR_BLACK) resolves through the color table, so it must be
+            // the index of black in DEATH.PAL, not in the previous palette.
+            colorPaletteLoad("art\\intrface\\death.pal");
+            Rect deathFrameBounds = blitBuffer2DCenteredAspectFit(backgroundFrmImage.getBuffer(),
+                Buffer2D(windowBuffer, screenWidth, screenHeight),
+                COLOR_BLACK,
+                settings.ui.death_screen_size != 0);
             backgroundFrmImage.unlock();
 
             const char* deathFileName = endgameDeathEndingGetFileName();
@@ -545,13 +552,18 @@ static void showDeath()
 
                     short beginnings[WORD_WRAP_MAX_COUNT];
                     short count;
-                    if (_mainDeathWordWrap(text, 560, beginnings, &count) == 0) {
-                        unsigned char* p = windowBuffer + 640 * (480 - fontGetLineHeight() * count - 8);
-                        bufferFill(p - 602, 564, fontGetLineHeight() * count + 2, 640, 0);
-                        p += 40;
+                    int deathFrameWidth = rectGetWidth(&deathFrameBounds);
+                    int deathFrameHeight = rectGetHeight(&deathFrameBounds);
+                    int textMaxWidth = std::min(560, deathFrameWidth - 80);
+                    if (textMaxWidth > 0 && _mainDeathWordWrap(text, textMaxWidth, beginnings, &count) == 0) {
+                        int textHeight = fontGetLineHeight() * count;
+                        int y = std::max(deathFrameBounds.top, deathFrameBounds.top + deathFrameHeight - textHeight - 8);
+                        int x = std::max(2, deathFrameBounds.left + (deathFrameWidth - textMaxWidth) / 2);
+                        bufferFill(windowBuffer + screenWidth * y + x - 2, textMaxWidth + 4, textHeight + 2, screenWidth, 0);
+                        unsigned char* p = windowBuffer + screenWidth * y + x;
                         for (int index = 0; index < count; index++) {
-                            fontDrawText(p, text + beginnings[index], 560, 640, COLOR_WHITE);
-                            p += 640 * fontGetLineHeight();
+                            fontDrawText(p, text + beginnings[index], textMaxWidth, screenWidth, COLOR_WHITE);
+                            p += screenWidth * fontGetLineHeight();
                         }
                     }
                 }
@@ -559,7 +571,6 @@ static void showDeath()
 
             windowRefresh(win);
 
-            colorPaletteLoad("art\\intrface\\death.pal");
             paletteFadeTo(_cmap);
 
             _main_death_voiceover_done = false;
