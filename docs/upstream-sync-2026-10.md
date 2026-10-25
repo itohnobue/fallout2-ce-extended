@@ -5,6 +5,10 @@ discarded, and why. It exists because the merge strategy chosen (ancestry-only `
 the discarded material invisible to a future `git merge` — this document is the only place that
 remembers it.
 
+**Post-pin addendum.** Two upstream commits landed after this pin; they are recorded in §11, which
+also advances the base to `c6f16df5`. The 317-row totals below remain the record of the
+`1cce1449..f6254ed5` range.
+
 | Item | Value |
 | --- | --- |
 | Upstream target | `fallout2-ce/fallout2-ce` `f6254ed5d25ec74f1de166bbba3611e5d6e303a3` |
@@ -336,7 +340,8 @@ each one *looks* like a fix and would make things worse.
 ## 10. Using this document in a future sync
 
 1. Read this document **before** the next `git merge upstream/main`. `f6254ed5` is the new base, so
-   anything here that was SKIPped or CONFLICT-DISCARDED will not surface as a conflict.
+   anything here that was SKIPped or CONFLICT-DISCARDED will not surface as a conflict. (§11 advances
+   that base to `c6f16df5` for the two commits that landed after this sync.)
 2. Re-evaluate a discarded commit only against the *current* code: the reasons above name the
    fork behaviour that blocked the port, and that behaviour may since have changed.
 3. Keep the rule: a value class (V/M/S) or no adoption; the fork wins every conflict; no typed-
@@ -344,3 +349,71 @@ each one *looks* like a fix and would make things worse.
 4. Re-run the same gate (all-target build, full `ctest`, the six probes, allow-list and
    protected-file audits) and record the counts here or in the next sync's document, so a
    regression has a baseline to fail against.
+
+## 11. Late arrivals (post-pin)
+
+Two upstream commits landed after this sync closed, and one of them repairs a live defect in this
+fork. They are recorded here as an addendum rather than folded into §2: the ledger and every total
+above are the record of the `1cce1449..f6254ed5` range, and restating those numbers for a range they
+never covered would make the document wrong about its own object. This addendum's own count is
+**2 content commits** — one ADOPT, one comment folded into that port — plus the two ancestry merges
+that carry them: **4 commits**, upstream head to fork.
+
+| Item | Value |
+| --- | --- |
+| Upstream range | `f6254ed5..c6f16df5` — **2** non-merge commits (`git rev-list --count --no-merges f6254ed5..c6f16df5` → 2) |
+| Upstream head | `c6f16df5` — "Merge pull request #838 from dweltvauller/fix/ctrl-move-keep-ap", parents `f6254ed5` and `f9b5dd41` |
+| Port commit | `56661e00` — `src/animation.cc` only, **+65 / −8** |
+| Ancestry merge | `fe3c2c69` — parents `56661e00` (fork) and `c6f16df5` (upstream), `git merge -s ours`; the tree is **unchanged** by it (`git diff --stat 56661e00 fe3c2c69` → empty) |
+| Fork state | **0** behind (`git rev-list --left-right --count HEAD...upstream/main` → `1877  0`) |
+| Ledger | **2** rows appended (319 rows now); §2's 317-row totals stay the record of the pin range |
+| Gate | build `BUILD SUCCEEDED`, **0** `error:`; `ctest` **93/93**; the six §7 probes at their floors |
+
+| Commit | Disposition | Value class | What it is |
+| --- | --- | --- | --- |
+| `75481203` | **ADOPT**, narrowed | **V** | "Make Ctrl moves keep AP for the attack" — a behavioural fix a player can hit (see below) |
+| `f9b5dd41` | **SKIP** as a standalone commit, **folded** into `56661e00` | none | "Explain why `_check_move` returns steps for Ctrl moves" — five comment lines, no code, and the body it documents does not exist here before the port |
+
+**The defect it fixes is live, not latent.** The Ctrl gesture keeps the attack's AP out of the move
+budget. The reserve was computed in **AP** (`*actionPointsPtr -= itemGetActionPointCost(...)`) and
+delivered to a channel that consumes the value as a **hex count** (`sad->length = actionPoints`,
+`src/animation.cc:2496`, `:2499-2506`), which cancels only while a hex costs 1 AP. With a crippled leg
+the cost is 4 AP per hex (8 with both legs, `src/critter.cc:1517-1534`), so the walk spent the AP the
+player had asked to keep and the attack was then refused (`src/combat.cc:6774`): `ap = 9` against an
+attack cost of 3 walked 3 hexes down to `ap = 0` instead of 1 hex leaving `ap = 5`. Same cause, second
+consequence: `_dude_move` handed the already-reduced value to `_dude_run`, whose own `_check_move`
+subtracted the reserve a second time, so Ctrl + double-click on the destination was refused outright
+instead of run.
+
+**What was ported.** Four hunks in `src/animation.cc`, no header and no caller change. Two `static`
+helpers before `_check_move` — `dudeMoveGetReservedActionPoints()` (`:3094-3107`) and
+`dudeMoveGetReservedStepLimit()` (`:3109-3131`) — turn the reserve into **whole hexes** at the cost
+the walk will actually charge (`critterGetMovementPointCostAdjustedForCrippledLegs`, so crippled legs
+and `HOOK_MOVECOST` stay authoritative) and refuse when the attack cannot be kept out of the dude's
+own AP. The `_check_move` Ctrl block (`:3145-3172`) pathfinds once, truncates the destination to the
+affordable step count and returns hexes; `_dude_move` (`:3188`, `:3194-3197`) keeps the pre-reserve
+budget for `_dude_run`. **Narrowing vs upstream:** both helpers are `static` and `src/animation.h` is
+untouched — upstream's two exports have no consumer in either tree, and the header declares no
+`dudeMove` symbol (`grep -c dudeMove src/animation.h` → 0). **Every fork AP guard is verbatim:** the
+W1 sfall clamp at `:2499` (a no-op on the Ctrl path now that the value is hexes and the destination
+is already truncated, fully in force on the AP-budget path), the free-move-first deduction
+`:2749-2759` and its `cannotMove` stop `:2765`, the fork's `_dude_run` sneaking condition `:3217`, and
+the `_combat_free_move` / `actionPointsBonus` accounting at `src/combat.cc:3481-3488`, `:3124-3128`,
+`:3453-3457`. `f9b5dd41`'s explanation is the comment on `*actionPointsPtr = steps` (`:3165-3169`) —
+folded, not applied separately.
+
+**The gate.** All targets built (`cmake --build out/build/macos-arm64-debug --config Debug`) →
+`BUILD SUCCEEDED`, exit 0, **0** `error:`; `ctest -C Debug` → **93/93 passed, 0 failed, 0 skipped**;
+the six §7 probes reproduce **285 / 56 / 44 / 134 / 93 / 4**; the diff set is `src/animation.cc` alone
+and all 38 protected files are byte-identical (`files/fallout2.cfg` untouched). **Honest limit, the
+same shape as §7's:** no test exercises `_check_move`/`_dude_move`/`_dude_run` — `test_animation` is a
+self-contained mirror that does not link `animation.cc` — so the green suite proves non-regression,
+not the fix. Operator in-game check: with one crippled leg, hold Ctrl and click a distant hex in
+combat, then attack — the dude moves a shorter distance, keeps the AP and the attack fires; and Ctrl +
+double-click on a reachable destination runs instead of doing nothing.
+
+**The base moves.** §1's "the next `git merge upstream/main` uses `f6254ed5` as its base" and §10
+step 1's "`f6254ed5` is the new base" both describe the state after `88ddbbdf`; after `fe3c2c69` the
+base is `c6f16df5`. Both late commits are carried in content — one ported, one folded — so nothing in
+this addendum resurfaces as a conflict either. A future sync reads the two rows here instead of
+re-deriving them from a merge, exactly as §1 asks of the 317.
