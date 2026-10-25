@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-10-25T05:31:06.001811
+Last updated: 2026-10-25T14:54:38.196338
 
 ## [pat-20260704221900-debed7]
 Category: pattern
@@ -658,4 +658,25 @@ Tags: port, contract, semantics, prior-fix, gotcha
 Changed: 2026-10-25T05:31:05.914111
 
 Same name, different semantics between fork and upstream: a function or field with an identical name can carry a different CONTRACT, so an upstream 'fix' that repairs upstream's contract can narrow or break the fork's deliberate one. Six of this sync's 50 confirmed findings were this class and every one was a fork-authored body: `sneak_success` re-rolls `randomBetween(1,100) <= skillGetValue` (src/sfall_opcodes.cc:6013-6021) instead of reporting the engine's persisted `_sneak_working`; `get_sfall_global_float` stores IEEE bits upstream but a parallel float map here (a test-pinned fork fix, tests/test_global_vars.cc:2002-2050); `rest_heal_time` is hours-per-event here vs interval-in-minutes upstream; `Rotation` is 0..5 while the FID field is 1..6, so upstream's `rotationIsValid` guard maps a legitimate NW critter to `kEmptyFid` at 57 `buildFid` call sites. Rule: before porting a fix to a body the fork owns, `git blame` the site and read the tests that pin it - a fork-authored body with a pin is deliberate until its own contract proves otherwise, and the right disposition is SKIP with the divergence named, not a spec alignment. Prevention: review-only - the pre-port blame/pin read is the check.
+
+## [got-20261025145438-7e6df8]
+Category: gotcha
+Tags: macos, notarization, release
+Changed: 2026-10-25T14:54:38.015093
+
+A notarytool submission can stall in 'In Progress' indefinitely (observed: 20+ min with no log available via 'notarytool log'). Do not wait on it — resubmit the same artifact; a fresh submission is independent and was Accepted in ~30s. 'notarytool submit --wait' can also die with HTTPClientError.connectTimeout while the submission itself is fine; submit without --wait, then poll 'notarytool info <id>'.
+
+## [got-20261025145438-011932]
+Category: gotcha
+Tags: macos, notarization, zip, spctl
+Changed: 2026-10-25T14:54:38.104225
+
+Extracting a notarized .app zip with the CLI 'unzip' drops extended attributes, so 'spctl -a -t exec' reports 'a sealed resource is missing or invalid' even though the artifact is correct. Validate with 'ditto -x -k <zip> <dir>' (the Finder/Archive Utility equivalent) — the staple then validates and spctl reports source=Notarized Developer ID.
+
+## [got-20261025145438-159ddf]
+Category: gotcha
+Tags: github, release, api
+Changed: 2026-10-25T14:54:38.193150
+
+A rolling GitHub release must be replaced by updating it in place: DELETE /releases/tags/<tag> followed by POST /releases races with GitHub's tag bookkeeping and the create fails 422 tag_name already_exists (and the DELETE itself can answer 404 while the release still exists). GET the release by tag, PATCH name/body on its id, and replace assets by name (delete only when the size differs).
 
