@@ -1,5 +1,5 @@
 # Knowledge Base
-Last updated: 2026-10-04T20:18:28.462101
+Last updated: 2026-10-25T05:31:06.001811
 
 ## [pat-20260704221900-debed7]
 Category: pattern
@@ -588,4 +588,74 @@ Tags: macos, signing, release
 Changed: 2026-09-01T20:19:16.117284
 
 macOS release pipeline: (1) Signing -- a Developer ID Application .cer from the portal has NO private key (usable for nothing alone); pair it with the CSR keypair used at creation (openssl pkcs12 -export then security import -T /usr/bin/codesign). Re-sign the ENTIRE bundle including nested executables with Developer ID before notarization. notarytool submit --wait --apple-id --team-id --password works from CLI; staple after. (2) Packaging -- CPack's 'cmake --build --target package' (DragNDrop) with the Xcode generator RE-SIGNS the .app ad-hoc ('Sign to Run Locally'), destroying the prior codesign signature; use manual 'hdiutil create -srcfolder <staging_with_signed_app> -format UDZO' instead (cp -R preserves the signed bundle). (3) ditto realpath errors were transient/flaky in this env (retry works).
+
+## [pat-20261025053032-17e4ce]
+Category: pattern
+Tags: git, merge, upstream, sync, ledger, port
+Changed: 2026-10-25T05:30:32.251805
+
+Selective upstream sync via an ancestry-only merge: `git merge -s ours <upstream-sha>` makes upstream an ancestor and leaves the fork tree byte-identical; content is then adopted in one reviewable commit per port wave, with every upstream commit carrying exactly one recorded disposition (ADOPT / SKIP / ALREADY-PORTED / CONFLICT-DISCARDED, plus ANCESTRY-ONLY for merge commits). Use it when the range is dominated by an architectural refactor the fork deliberately does not follow (the typed FrmId/TypedFrmId/ProtoId series): a textual merge yields a tree that neither compiles nor keeps fork semantics, and buries the real fixes inside thousands of rename hunks. PERMANENT trade-off, accept it knowingly: after the merge the next `git merge upstream/main` uses the merged upstream sha as its base, so upstream changes this sync deliberately discarded never reappear as pending deltas. The committed disposition ledger (docs/upstream-sync-2026-10.md + tmp/ledger/ledger.tsv) is then the ONLY memory of what was discarded and why, and a future sync must revisit a decision by reading its entry rather than re-deriving it from a merge conflict. Warrant: merge 88ddbbdf (parents e3e2433b fork + f6254ed5 upstream) over a 317-commit range, 317-row ledger (286 content + 31 ancestry merges); docs/upstream-sync-2026-10.md:25-44. Prevention: not mechanically preventable - accept recurrence and budget for it in every sync; the committed ledger is the enforcement, so its commit is mandatory.
+
+## [pat-20261025053032-1c8594]
+Category: pattern
+Tags: port, merge, atomic, contract, producer-consumer
+Changed: 2026-10-25T05:30:32.334643
+
+The dominant failure mode of a selective port is taking HALF of a producer/consumer pair, not taking a wrong commit. Two-sided contracts must be adopted in ONE commit or not at all: a hook's arg0 contract plus its fire sites; a clamp plus the unit its consumer reads; a fix plus the upstream commit that removes its pre-image. Two mechanical checks before porting a hunk pair: (a) `git apply --check` every hunk of the pair against the fork (a fix whose pre-image never existed here cannot be ported as authored - it must be re-expressed); (b) read the upstream commit IMMEDIATELY AFTER the one being ported - a following commit that deletes what the first adds means the pair is (fix, revert) and neither half is portable alone (1cb875b8 adds a `dataSize > payloadSize` rejection that the very next upstream commit removes; 1,614 loose .FR0-.FR5 files plus 13,602 DAT split entries trip it in the two mods the Et Tu stand ships). 13 of this sync's 50 confirmed findings were port-order/partial-adoption defects. Warrant: src/animation.cc `_check_move` reserves AP while `sad->length` is consumed as a hex count (:2496/:2504-2506); src/combat_ai.cc:1417 `dist <= a3` against the producer post-image `dist - radius - 1` at src/combat.cc:2517. Prevention: mechanically preventable - a wave-gate post-condition per adopted hunk (grep the post-port diff for the pair's distinguishing token, or `git apply --check` both halves) fails the wave when a member is missing.
+
+## [got-20261025053032-c64af5]
+Category: gotcha
+Tags: port, merge, guard, invariant, prior-fix
+Changed: 2026-10-25T05:30:32.417283
+
+A faithful upstream rewrite of a body the fork has hardened silently deletes the fork's guard or loop invariant, because transcription replaces the whole body. Before applying an upstream hunk: diff the fork's same body at the merge base and list every fork-only line; each fork-only line must be RE-EXPRESSED into the new shape, or the hunk is CONFLICT-DISCARDED - never transcribed. Six of this sync's 50 confirmed findings were this class, and every one was a fork hardening or loop invariant disappearing inside an upstream rewrite of the same function: the fork's three `art N-1` length clamps absent from all 38 upstream revisions of art.cc; upstream's `#850` per-turn AP grant landing ABOVE the fork's rewind and its three AP gates (src/combat.cc:3311, src/combat_ai.cc:2198, :3560) so a spent critter gets a fresh pool; `#800` deleting the fork's fade machinery still referenced at src/worldmap.cc:4423. Prevention: review-only - the pre-port step `git diff <merge-base>..HEAD -- <file>` per hunk, plus a wave-gate grep for each fork-only token in the post-port body.
+
+## [pat-20261025053032-c18aff]
+Category: pattern
+Tags: ledger, port, verification, counts, artifact
+Changed: 2026-10-25T05:30:32.499286
+
+A port ledger, plan, or committed sync record is a set of factual CLAIMS, not notes: every row's stated ground must re-derive from the tree or the git object, and every number must ship with the command that produces it plus the set it measures. Two measured warrants: (a) re-adjudicating the 19 most-scrutinised ledger rows found 9 (47%) carrying a reason or status their own evidence did not support, including false ALREADY-PORTED claims resting on surface presence of a symbol (a SKIP row whose reason said value was taken; a 39-row 'the FrmId family is absent' boilerplate contradicted by src/art.h:85-107); (b) a published assertion count that no available metric reproduces (four variants bracket it - 10,441 / 10,460 / 11,277 / 11,359 - while every one agrees on the +63 delta) cannot serve as the next sync's baseline. Label the measured set too: '17 of 19 adopted shas' was a correct number with the wrong label, since those 19 were the DISPUTED set and 16 of them were never adopted. Structural remedy that fits the failure: one mechanical reason-evidence challenger over every row before the ledger is committed - re-derive each stated ground and fail the row when it does not reproduce. Prevention: mechanically preventable - script the challenger as a pre-commit gate over the ledger.
+
+## [got-20261025053032-b32867]
+Category: gotcha
+Tags: verification, grep, false-positive, inventory, port
+Changed: 2026-10-25T05:30:32.582781
+
+grep is evidence only with the right token and the right shape - three traps, each of which produced a wrong verdict: (1) MASK-CLEARS: a flag cleared as `flags &= ~OBJECT_EQUIPPED` (src/item.cc:512, from itemRemoveInternal) does not match a grep for a write of the flag, so a claimed duplicate side effect at a delegation boundary is a false positive until the callee's precondition flag state is read at the call site (the inventory window strips the worn armour and clears the bit before the drop block runs, so AC/DR/DT are subtracted once). (2) BARE-TOKEN INFLATION: `grep -c 'case '` on src/sfall_metarules.cc gives 228 because it counts comments and strings, against 134 real kMetarules[] rows (:1111) - anchor the pattern to code shape (`^[[:space:]]*\{[[:space:]]*"[a-z0-9_]+",[[:space:]]*mf_`). (3) TYPE-EXISTS is not MEMBER-EXISTS: `grep ProtoId -> 0` does not prove the fork has no frame-id type when a minimal FrmId wrapper exists (src/art.h:85-107), and 39 ledger rows inherited a false 'family absent' claim from that shape of check. Proving absence requires the exact symbol AND the exact member, searched across every spelling (mask clear, helper, wrapper). Prevention: review-only - no automated check decides intent; mitigation is anchored patterns plus reading the callee at every claimed boundary.
+
+## [got-20261025053032-d363af]
+Category: gotcha
+Tags: loadsave, save, scan, state-machine, port
+Changed: 2026-10-25T05:30:32.668062
+
+Narrowing a whole-collection scan to a lazy per-page scan moves a freshness guarantee: consumers that read a per-item status now read a value scanned only for the DISPLAYED page. The pre-port `_GetSlotList` swept every slot, so the fork's auto-quicksave ring moving `_slot_cursor` off the displayed page (src/loadsave.cc:588-596) was harmless; after the per-page scan, `_LSstatus[_slot_cursor]` was stale at the overwrite gate (:878-892), so the confirmation was skipped and the save landed in an undisplayed ring slot. Rule: when you change a scan's granularity, enumerate every writer of the selector - not only the UI's own paging - and have the scan refresh the selector's slice as well as the displayed slice (`loadSaveLoadSlotPage(_slot_cursor / slotsPerPage)`, :2862). The page loader no-ops on an already-scanned page (:2873-2875), so the cost is one probe and the invariant becomes 'the cursor's slot is scanned' for every present and future writer. Fixing only the known writer closes today's instance and leaves the class open. Prevention: mechanically preventable in part - pin the arithmetic and grep-assert the cursor-page call is present (no test target links loadsave.cc, so a mirror pin cannot fail).
+
+## [got-20261025053032-2803c1]
+Category: gotcha
+Tags: port, shipped-data, measurement, art, regression
+Changed: 2026-10-25T05:30:32.750884
+
+An adopted upstream fix can be a numerical no-op in every shipped configuration, and a class that pre-dates the port is widened, not introduced - measure the shipped asset and the merge base before recording a non-delivery as a defect or a delta as a regression. The endgame pan rewrite derives panDistance/fadeDistance/frameDelay from the art's width; for the shipped `art\intrface\DP.FRM` (1280x480) the old fork formula and upstream's rewrite compute identical values, so the genuine non-delivery cost the user nothing and the obligation was a ledger line plus a stale test rewrite, not code. Likewise a use-after-free window around `critterKill` that is already reachable through the pre-port HOOK_ONDEATH path, and only through third-party mod code, is a widened pre-existing class, not a port regression. Rule: compute both formulas at the shipped asset's actual dimensions, and diff the class against the merge base, before rating impact. Prevention: review-only - a measurement step before filing, no mechanical guard.
+
+## [pat-20261025053032-99e337]
+Category: pattern
+Tags: test, pin, port, verification
+Changed: 2026-10-25T05:30:32.835124
+
+A regression pin can only fail on a production regression if the production translation unit is IN the harness's compiled set. This suite compiles 16 engine TUs (`grep -oE 'src/[a-z_0-9]+\.cc' tests/CMakeLists.txt | sort -u`), no test includes a `.cc` (0 matches), and no target links the game, so a pin for any TU outside that set is a self-contained mirror: it is green in both the correct and the incorrect production state. 7 of 8 promised port pins were structurally mirror-bound, and a mirror pin of production page arithmetic passed in both states. Rule: for each adopted behaviour change, decide linkability from tests/CMakeLists.txt FIRST; when the TU does not link, the only discriminating guard is a wave-gate grep for the hunk's distinguishing token (fails the wave when the token is absent from the post-port diff), stated as a manual gate check and never as a test. Keep the accounting honest: a compile-only OBJECT library buys compile visibility, not a pin - it executes nothing. Prevention: mechanically preventable - a gate script derives linkability per adopted commit and requires either a production-linked pin or a named gate grep.
+
+## [got-20261025053032-603044]
+Category: gotcha
+Tags: build, ctest, gate, verification, allowlist
+Changed: 2026-10-25T05:31:06.001806
+
+`BUILD SUCCEEDED` does not prove the build covered the tests you are about to trust. Two ways it lies in an Xcode multi-config tree: (a) INCREMENTAL NO-OP - exit 0 with 0 `CompileC` (only CodeSign actions) proves the tree agrees with its dependency files, not that the checked-in sources compile, so it is not acceptance evidence; (b) STALE PLAN - the build plan can be computed before ZERO_CHECK regenerates the project, so a newly added test target is never built while the 92 existing ones relink, and `ctest` then passes on the stale binary set with the new target absent. Gate rule: after every build, count test binaries on disk and compare against `grep -c 'add_test(' tests/CMakeLists.txt`, and confirm the new target's name appears in the build log; re-invoke the build after any configure; use `--clean-first` when the build is itself the evidence. The same family, one level up: A CHECK THAT CANNOT FAIL - an allow-list gate whose allowed set is derived from the artifact it audits (`comm -23` against a list that itself contains the forbidden path) suppresses the violation by construction, and a remedy step that never returns a failure status reports success for every input; derive the allowed set from the authority, and make the failure path exit non-zero. And a baseline verifier that asserts tree equality with the merge base exits non-zero forever after the first post-baseline commit - read its individual lines, never its exit code alone. Prevention: mechanically preventable - the gate script asserts target-count == add_test-count, greps the log for every newly registered target, and its own failure path is exercised once against a known-bad input.
+
+## [got-20261025053105-b0f97e]
+Category: gotcha
+Tags: port, contract, semantics, prior-fix, gotcha
+Changed: 2026-10-25T05:31:05.914111
+
+Same name, different semantics between fork and upstream: a function or field with an identical name can carry a different CONTRACT, so an upstream 'fix' that repairs upstream's contract can narrow or break the fork's deliberate one. Six of this sync's 50 confirmed findings were this class and every one was a fork-authored body: `sneak_success` re-rolls `randomBetween(1,100) <= skillGetValue` (src/sfall_opcodes.cc:6013-6021) instead of reporting the engine's persisted `_sneak_working`; `get_sfall_global_float` stores IEEE bits upstream but a parallel float map here (a test-pinned fork fix, tests/test_global_vars.cc:2002-2050); `rest_heal_time` is hours-per-event here vs interval-in-minutes upstream; `Rotation` is 0..5 while the FID field is 1..6, so upstream's `rotationIsValid` guard maps a legitimate NW critter to `kEmptyFid` at 57 `buildFid` call sites. Rule: before porting a fix to a body the fork owns, `git blame` the site and read the tests that pin it - a fork-authored body with a pin is deliberate until its own contract proves otherwise, and the right disposition is SKIP with the divergence named, not a spec alignment. Prevention: review-only - the pre-port blame/pin read is the check.
 
