@@ -18,7 +18,7 @@ per feature group and any behavior differences from sfall.
 | **RPU** | Supported — full hook/opcode/metarule/ddraw.ini surface implemented |
 | **Et Tu** | Supported — FO1-mode engine behavior + config overlays implemented |
 | **Save compatibility** | Backward-compatible; sfall global-vars and override state serialized |
-| **Tests** | 92 test executables (unit/mirror; not a substitute for in-game testing) |
+| **Tests** | 93 test executables (unit/mirror; not a substitute for in-game testing) |
 
 ## Settings (ddraw.ini → CE config files)
 

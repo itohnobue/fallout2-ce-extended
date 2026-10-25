@@ -130,6 +130,26 @@ Each audit verified by adversarial pipeline with 2-iteration convergence:
 
 ---
 
+## 2026-10-25 — Upstream sync to `f6254ed5`
+
+**Upstream sync:** `upstream/main` (`f6254ed5`, 317 commits since the merge base `1cce1449`) was merged with `git merge -s ours` — ancestry only, tree untouched — and its content was then adopted selectively in ten reviewable port waves. Dispositions over the 317 commits: **60 ADOPT · 191 SKIP · 29 ALREADY-PORTED · 6 CONFLICT-DISCARDED · 31 ANCESTRY-ONLY**. The fork is now 0 commits behind upstream. Full record, including what was discarded and why: [docs/upstream-sync-2026-10.md](docs/upstream-sync-2026-10.md).
+
+**Notable adopted fixes:**
+- Combat: `damage_p_proc` fires only on a hit for non-critters, worn-armour AC/DR/DT are removed on `drop_obj`, zero-damage instadeath criticals no longer skip the death path, sfall's critical-hit-table corrections, NPCs pick up items in combat instead of looping their AP, multihex critter/party placement, `ai_move_away` distance sign pair, friendly-fire burst reduction, `destroy_p_proc` before `critterKill` for explosions, XP no longer lost when combat ends via an elevator/stairs transition
+- Inventory and barter: a weightless request always fits (the `weight != 0` short-circuit), the barter table offset follows collapsing ammo stacks, a lit flare keeps its own timer and returns the holder's light, flares are taken from their owner's stack
+- Et Tu and worldmap: `mark_area_known(area, 3)` marks the circle without revealing a fog radius, scripted doors are re-checked after use (Killian's storeroom), purple `float_msg`, the worldmap opens without a black frame
+- Audio and speech: voiced lines outside dialogue play again, per-NPC speech directories resolve in loose folders and `.dat`s, barter reply speech no longer plays over the barter UI, floats are not voiced while resting, 44.1 kHz voice honours the channel count, gapless music comparison is case-insensitive
+- Save/load and shell: per-slot tolerance plus a lazy page scan (1000 slots stay reachable), ESC during rest restores the original duration, the character-editor card strip artifact, repaint after window resize, main menu behind submenus with three menu-flow fixes
+- Safety: five upstream memory-safety/heap/art-I/O passes, re-expressed so the fork's own guards (art clamps, heap sentinels, `TILE_MAX_DISTANCE` 9999) survive
+
+**Narrowings (deliberate deviations from upstream):** the strict `dataSize > payloadSize` art rejection is not taken (it trips ~15,000 shipped split `.FR*` files); the save-slot page model stays runtime (`saveLoadPages = gExtraSaveSlots ? 100 : 1`); `mark_area_known` treats state 3 only; `e3fc7467`'s rest limb is taken without its holodisk half; the `5a2f3c19` panning rewrite is not taken (the fork's `panDistance <= 0` guard stays); `obj_on_screen`/`tile_is_visible` use `screenGetHeight()` where upstream uses `screenGetVisibleHeight()`.
+
+**Regression found and fixed:** the adopted lazy `_GetSlotList` scanned only the displayed page while the auto-quicksave ring moves the cursor off it, so the save-overwrite confirmation could be skipped and the load gate could refuse a real save (N2). Fixed in `0c39f728`: one added line scans the cursor's page too (`src/loadsave.cc:2862`).
+
+**Verification:** all-target clean build (0 errors), 93/93 `ctest`, six invariant probes at or above their floors (285 / 56 / 44 / 134 / 93 / 4), 38 protected files byte-identical, 0 allow-list leaks.
+
+---
+
 ## [Upstream] — alexbatalov/fallout2-ce (pre-fork)
 
 All changes prior to `481cb9e` are from the upstream [fallout2-ce](https://github.com/alexbatalov/fallout2-ce) project. See that repository's changelog for pre-fork history.

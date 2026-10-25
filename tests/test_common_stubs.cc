@@ -156,7 +156,9 @@ bool compat_path_contains_traversal(const char* path)
 // =============================================================
 
 // config.cc uses fileOpen for DAT-based config reading.
-File* fileOpen(const char* /*filename*/, const char* /*mode*/)
+// __attribute__((weak)) lets a test file supply a working handle for the
+// script-loader pre-check (test_global_scripts_timers.cc).
+__attribute__((weak)) File* fileOpen(const char* /*filename*/, const char* /*mode*/)
 {
     return nullptr;
 }
@@ -195,7 +197,9 @@ int filePrintFormatted(File* /*stream*/, const char* /*format*/, ...)
 
 // sfall_global_scripts.cc uses fileNameListInit / fileNameListFree
 // to discover script files on disk. Return 0 files found.
-int fileNameListInit(const char* /*pattern*/, char*** /*fileNames*/)
+// __attribute__((weak)) lets a test file report a file list so the
+// global-script registry can be populated (test_global_scripts_timers.cc).
+__attribute__((weak)) int fileNameListInit(const char* /*pattern*/, char*** /*fileNames*/)
 {
     return 0;
 }
@@ -235,7 +239,9 @@ namespace fallout {
 
     // sfall_global_scripts.cc calls programCreateByPath / programFree
     // to load compiled scripts from disk and free them.
-    Program* programCreateByPath(const char* /*path*/)
+    // __attribute__((weak)) lets a test file hand out a fake program so the
+    // global-script registry can be populated (test_global_scripts_timers.cc).
+    __attribute__((weak)) Program* programCreateByPath(const char* /*path*/)
     {
         return nullptr;  // no scripts available in test context
     }
@@ -247,7 +253,9 @@ namespace fallout {
 
     // sfall_global_scripts.cc calls programFindProcedure to look up
     // script procedures (start, map_enter, etc.) by name.
-    int programFindProcedure(Program* /*prg*/, const char* /*name*/)
+    // __attribute__((weak)) lets a test file report a found procedure
+    // (test_global_scripts_timers.cc).
+    __attribute__((weak)) int programFindProcedure(Program* /*prg*/, const char* /*name*/)
     {
         return -1;  // procedure not found
     }
@@ -261,7 +269,9 @@ namespace fallout {
 
     // sfall_global_scripts.cc calls programExecuteProcedure to run
     // a procedure (e.g. "start") on a loaded program.
-    void programExecuteProcedure(Program* /*program*/, int /*procedureIndex*/)
+    // __attribute__((weak)) lets a test file observe the call
+    // (test_global_scripts_timers.cc counts executed procedures).
+    __attribute__((weak)) void programExecuteProcedure(Program* /*program*/, int /*procedureIndex*/)
     {
         // no-op: script execution requires the full engine runtime.
     }

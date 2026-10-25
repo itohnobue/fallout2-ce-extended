@@ -1033,3 +1033,18 @@ add_executable(test_message_female_dialog
 )
 target_link_libraries(test_message_female_dialog PRIVATE test_sources test_stubs doctest)
 add_test(NAME test_message_female_dialog COMMAND test_message_female_dialog)
+
+# ---- Test: global script frame-interval timers (PRODUCTION-LINKED) ----
+# Links test_sources, so sfall_global_scripts.cc is the real implementation
+# (tests/CMakeLists.txt:34) — not a mirror. The test file supplies strong
+# overrides for the five weak stubs in test_common_stubs.cc
+# (fileNameListInit, fileOpen, programCreateByPath, programFindProcedure,
+# programExecuteProcedure) so the global-script registry can be populated
+# without game data. Pins sfall_gl_scr_set_repeat / _set_type frame counting,
+# F-M040's counter reset, the F-058 game_loaded() tri-state and the F-21
+# SCRIPT_PROC_NO_PROC sentinel.
+add_executable(test_global_scripts_timers
+    test_global_scripts_timers.cc
+)
+target_link_libraries(test_global_scripts_timers PRIVATE test_sources test_stubs doctest)
+add_test(NAME test_global_scripts_timers COMMAND test_global_scripts_timers)

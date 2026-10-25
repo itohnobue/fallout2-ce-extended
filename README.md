@@ -12,6 +12,8 @@ Build is fully signed and notarized by Apple.
 
 ## Current status
 
+Upstream: `fallout2-ce/fallout2-ce` `upstream/main` is synced to `f6254ed5` (ancestry-only merge of the 317 commits since `1cce1449`; content adopted selectively) and the fork is current — 0 commits behind. Record of what was merged, adopted and deliberately discarded: [docs/upstream-sync-2026-10.md](docs/upstream-sync-2026-10.md).
+
 | Mod | Status | Notes |
 | --- | --- | --- |
 | [Fallout 2 Restoration Project (RPU)](https://github.com/BGforgeNet/Fallout2_Restoration_Project) | Supported | Works, runs and fully playable. Currently going through testing to catch minor bugs. |
